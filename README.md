@@ -86,9 +86,9 @@ Build the custom 3D **Enchanting Table** (`piece_enchanting_table`) and upgrade 
 ---
 
 ### ☠️ 4. Hunt Champions, 6 Combat Injuries & Cursed Dungeons (`Enemy Overhaul`)
-- **Named Hunt Champions (Biome Vendetta):** Slaughtering a species repeatedly triggers silent ambushes by a **Named Champion** (`~3.2x` HP, `~1.75x` dmg, stagger resistance, and biome combat perks) with **guaranteed trophy drops** (fueling weapon enchants!) and **bonus Coins** (funding Rebirth Scrolls!).
+- **Named Hunt Champions (Biome Vendetta):** Every **~250 slain enemies** (`225–275`), a **Named Champion** with 2-star base stats (`3.0x` HP, `2.0x` dmg) **plus guaranteed biome elemental attacks** (*toxin/poison, frost, fire, lightning*), combat perks, and stagger resistance silently stalks and ambushes the hunter, dropping **guaranteed trophies** (fueling weapon enchants!) and **bonus Coins** (funding Rebirth Scrolls!).
 - **6 Tactical Combat Injuries:** Unblocked enemy hits can inflict *Bleeding* (`x2` bleed damage while sprinting/rolling!), *Hamstrung* (`-25%` speed), *Sundered Armor* (`-30%` armor), *Winded* (`-50%` stamina regen), *Eitr Burn* (casting burns HP), or *Putrid Rot* (`-50%` healing — countered by the *Staff of Purification*!).
-- **Sealed Cursed Dungeons (`10%` chance):** Stepping inside triggers dense mystical fog, buffs monsters (`+30%` HP & dmg), and **seals the exit shut** until your party slays the **Curse Warden** in the deepest chamber.
+- **Sealed Cursed Dungeons (`10%` of each dungeon type):** Exactly `10%` of every dungeon type in the world (*Burial Chambers, Troll Caves, Sunken Crypts, Frost Caves, Infested Mines, Morgen Caves, Charred Tombs*) are cursed: stepping inside triggers mystical fog, buffs monsters (`+30%` HP & dmg), and **seals the exit shut** until your party slays the **Curse Warden** in the deepest chamber.
 
 ---
 
@@ -112,7 +112,7 @@ Removes boss **Vegvisir** runestones from the overworld and dungeons (or optiona
 | `rpclass reset` | Clear your current class and open the initial selection screen |
 | `rpclass set <warrior\|knight\|thief\|hunter\|sorcerer\|beggar>` | Instantly assign a class (`1..6` also supported) |
 | `enemyoverhaul champion [PrefabName]` | Spawn a stalking Hunt Champion nearby *(e.g. `Troll`, `Draugr`, `Goblin`, `Wolf`, `SeekerBrute`)* |
-| `enemyoverhaul kills <PrefabName>` | Check current world kill streak for a creature species |
+| `enemyoverhaul kills [number]` | Check (or set) the global Hunt Champion kill counter (`~225–275` kills) |
 | `enemyoverhaul injury <bleed\|hamstring\|sunder\|winded\|eitrburn\|rot\|all\|clear>` | Inflict or cleanse Combat Injuries (`15m` AoE on `clear`) |
 | `enemyoverhaul map` / `enemyoverhaul map clear` | Show or clear map pins for all active **Cursed Dungeons** |
 | `enemyoverhaul cursedungeon` / `enemyoverhaul uncurse` | Force-curse & seal (or unseal) the nearest/current dungeon |
@@ -211,9 +211,9 @@ Removes boss **Vegvisir** runestones from the overworld and dungeons (or optiona
 ---
 
 ### ☠️ 4. Чемпионы Охоты, 6 Боевых Травм и Проклятые Данжи (`Enemy Overhaul`)
-- **Именные Чемпионы Охоты:** массовое истребление вида пробуждает месть биома — по следу охотника выходит скрытный **Чемпион** с боевыми перками. За победу — **100% гарантированный дроп трофеев** (под прокачку чар!) и **монеты** (на Свиток Перерождения!).
+- **Именные Чемпионы Охоты:** каждые **~250 убитых врагов** (`225–275`) по следу охотника выходит скрытный **Чемпион** с базовыми характеристиками `2★` моба (`3.0x` HP, `2.0x` урона), **но гарантированно бьющий стихией своего биома** (*токсином/ядом, морозом, огнём или молнией*) + боевыми перками и сопротивлением стаггеру. За победу — **100% гарантированный дроп трофеев** (под прокачку чар!) и **монеты** (на Свиток Перерождения!).
 - **6 Боевых Травм:** незаблокированные удары врагов накладывают *Рваную рану* (на спринте и в перекатах урон крови `x2`!), *Простреленное сухожилие*, *Раскол брони*, *Выбитое дыхание*, *Ожог Эйтра* или *Заражение* (`-50%` любого лечения — снимается *Посохом Очищения*!).
-- **Запечатанные Проклятые Данжи (`10%`):** внутри сгущается цветной туман, мобы получают `+30%` к HP и урону, а **выход наружу запечатывается**, пока не повержен **Страж Проклятия** в дальней комнате.
+- **Запечатанные Проклятые Данжи (`10%` от каждого типа):** ровно `10%` подземелий каждого типа в мире (*Курганы, Пещеры троллей, Затопленные склепы, Морозные пещеры, Заражённые шахты, Пещеры Моргена и Гробницы*) оказываются прокляты — внутри сгущается цветной туман, мобы получают `+30%` к HP и урону, а **выход наружу запечатывается**, пока не повержен **Страж Проклятия** в дальней комнате.
 
 ---
 
@@ -248,7 +248,7 @@ Removes boss **Vegvisir** runestones from the overworld and dungeons (or optiona
 | Команда | Описание |
 | :--- | :--- |
 | `enemyoverhaul champion [PrefabName]` | Заспавнить рядом скрытого Чемпиона *(например: `Troll`, `Draugr`, `Goblin`, `Wolf`, `SeekerBrute`)* |
-| `enemyoverhaul kills <PrefabName>` | Показать текущий счётчик убийств этого вида в мире |
+| `enemyoverhaul kills [число]` | Показать (или задать) общий счётчик убийств до появления Чемпиона (`225–275`) |
 | `enemyoverhaul injury <bleed\|hamstring\|sunder\|winded\|eitrburn\|rot\|all>` | Наложить выбранную боевую травму (или все 6 сразу) |
 | `enemyoverhaul injury clear` *(или `cleanse`)* | Снять все боевые травмы со всех игроков в радиусе `15 м` |
 | `enemyoverhaul map` / `enemyoverhaul map clear` | Показать или убрать на карте метки всех активных **Проклятых подземелий** |

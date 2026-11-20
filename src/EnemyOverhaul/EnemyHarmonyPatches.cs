@@ -79,11 +79,30 @@ namespace CoarstalsEnemyOverhaul
 
         // ====================================================================
         // 3. Combat Damage Pipeline:
+        //    - Cancel vanilla 3-star 2.5x Attack.GetLevelDamageFactor on Champions so both Attack & Aoe share true 1.0x base
         //    - Champion & Cursed Dungeon Mob outgoing damage multipliers
         //    - Champion stagger resistance (anti-stunlock)
         //    - Block detection so ONLY unblocked/unparried hits inflict Injuries!
         //    - Sundered Armor (-30% Total Armor) applied to Player.GetBodyArmor()
         // ====================================================================
+        [HarmonyPatch(typeof(Attack), "GetLevelDamageFactor")]
+        public static class Patch_Attack_GetLevelDamageFactor
+        {
+            private static readonly FieldInfo s_atkCharField = typeof(Attack).GetField("m_character", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+
+            public static bool Prefix(Attack __instance, ref float __result)
+            {
+                if (__instance == null || s_atkCharField == null) return true;
+                Humanoid h = s_atkCharField.GetValue(__instance) as Humanoid;
+                if (h != null && !h.IsPlayer() && ChampionSystem.IsChampion(h))
+                {
+                    __result = 1.0f;
+                    return false;
+                }
+                return true;
+            }
+        }
+
         [HarmonyPatch(typeof(Player), "GetBodyArmor")]
         public static class Patch_Player_GetBodyArmor
         {
@@ -404,7 +423,7 @@ namespace CoarstalsEnemyOverhaul
         }
 
         // ====================================================================
-        // 8. Overhead Enemy HUD Formatting for Champions & Cursed Mobs
+        // 8. Overhead Enemy HUD Formatting for Champions & Cursed Mobs (Zero-Alloc Cached!)
         // ====================================================================
         [HarmonyPatch(typeof(EnemyHud), "UpdateHuds")]
         public static class Patch_EnemyHud_UpdateHuds
@@ -412,20 +431,61 @@ namespace CoarstalsEnemyOverhaul
             private static readonly FieldInfo s_hudsField = typeof(EnemyHud).GetField("m_huds", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
             private static FieldInfo s_nameField;
 
+            private struct CachedHudLabel
+            {
+                public byte Kind; // 0 = normal, 1 = champ, 2 = cursedMob
+                public string Formatted;
+                public float ExpireTime;
+            }
+
+            private static readonly Dictionary<int, CachedHudLabel> s_labelCache = new Dictionary<int, CachedHudLabel>();
+            private static float s_nextPruneTime;
+
             public static void Postfix(EnemyHud __instance)
             {
                 if (__instance == null || s_hudsField == null) return;
                 IDictionary dict = s_hudsField.GetValue(__instance) as IDictionary;
                 if (dict == null || dict.Count == 0) return;
 
+                float now = Time.time;
+                if (now >= s_nextPruneTime)
+                {
+                    s_nextPruneTime = now + 10f;
+                    if (s_labelCache.Count > 128) s_labelCache.Clear();
+                }
+
                 foreach (DictionaryEntry entry in dict)
                 {
                     Character ch = entry.Key as Character;
                     if (ch == null || ch.IsPlayer() || entry.Value == null) continue;
 
-                    bool isChamp = ChampionSystem.IsChampion(ch);
-                    bool isCursedMob = !isChamp && CursedDungeonSystem.IsCursedDungeonCreature(ch);
-                    if (!isChamp && !isCursedMob) continue;
+                    int id = ch.GetInstanceID();
+                    CachedHudLabel cached;
+                    if (!s_labelCache.TryGetValue(id, out cached) || now >= cached.ExpireTime)
+                    {
+                        bool isChamp = ChampionSystem.IsChampion(ch);
+                        bool isCursedMob = !isChamp && CursedDungeonSystem.IsCursedDungeonCreature(ch);
+                        cached.ExpireTime = now + 1.5f;
+
+                        if (isChamp)
+                        {
+                            cached.Kind = 1;
+                            cached.Formatted = ChampionSystem.FormatChampionOverheadName(ch);
+                        }
+                        else if (isCursedMob)
+                        {
+                            cached.Kind = 2;
+                            cached.Formatted = string.Format("<color=#D46BFF>[{0}]</color> {1}", EnemyLocalization.Loc("$ceo_cursed_mob_tag"), ch.GetHoverName());
+                        }
+                        else
+                        {
+                            cached.Kind = 0;
+                            cached.Formatted = null;
+                        }
+                        s_labelCache[id] = cached;
+                    }
+
+                    if (cached.Kind == 0 || string.IsNullOrEmpty(cached.Formatted)) continue;
 
                     if (s_nameField == null)
                     {
@@ -436,22 +496,11 @@ namespace CoarstalsEnemyOverhaul
                     TextMeshProUGUI nameTmp = s_nameField.GetValue(entry.Value) as TextMeshProUGUI;
                     if (nameTmp == null) continue;
 
-                    string formatted;
-                    if (isChamp)
-                    {
-                        formatted = ChampionSystem.FormatChampionOverheadName(ch);
-                    }
-                    else
-                    {
-                        string baseName = ch.GetHoverName();
-                        formatted = string.Format("<color=#D46BFF>[{0}]</color> {1}", EnemyLocalization.Loc("$ceo_cursed_mob_tag"), baseName);
-                    }
-
-                    if (nameTmp.text != formatted)
+                    if (nameTmp.text != cached.Formatted)
                     {
                         nameTmp.richText = true;
                         nameTmp.overflowMode = TextOverflowModes.Overflow;
-                        nameTmp.text = formatted;
+                        nameTmp.text = cached.Formatted;
                     }
                 }
             }
@@ -612,13 +661,18 @@ namespace CoarstalsEnemyOverhaul
             {
                 if (args.Length >= 2)
                 {
-                    int c = ChampionSystem.GetServerSpeciesKillCount(args[1]);
-                    Console.instance.Print("[EnemyOverhaul] Current world kill streak for '" + args[1] + "': " + c);
+                    int newVal;
+                    if (int.TryParse(args[1], out newVal))
+                    {
+                        ChampionSystem.SetServerGlobalKillCount(newVal, forcePersistToZoneSystem: true);
+                        Console.instance.Print("[EnemyOverhaul] Set global Hunt Champion kill counter to: " + newVal + " / " + ChampionSystem.GetCurrentTargetThreshold());
+                        return;
+                    }
                 }
-                else
-                {
-                    Console.instance.Print("Usage: enemyoverhaul kills <PrefabName> (e.g. Troll, Greydwarf, Draugr)");
-                }
+                int c = ChampionSystem.GetServerGlobalKillCount();
+                int target = ChampionSystem.GetCurrentTargetThreshold();
+                Console.instance.Print(string.Format("[EnemyOverhaul] Global Hunt Champion kill counter: {0} / {1} (window {2}..{3})",
+                    c, target, EnemyOverhaulConfig.HuntChampionMinKills.Value, EnemyOverhaulConfig.HuntChampionMaxKills.Value));
                 return;
             }
 

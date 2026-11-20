@@ -242,7 +242,10 @@ namespace CoarstalsEnemyOverhaul
         public const string ZdoChampPackUsed = "CEO_PackUsed";
 
         public const string RPC_ReportKillToServer = "CEO_RPC_ReportKill";
-        private const string GlobalKeyPrefix = "ceo_kills_";
+        private const string GlobalHuntKillsKeyPrefix = "ceo_huntkills_";
+
+        private static int s_serverHuntKills = -1;
+        private static int s_serverTargetThreshold = -1;
 
         private static readonly HashSet<string> s_largeSpecies = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -335,17 +338,47 @@ namespace CoarstalsEnemyOverhaul
             s_rpcRegistered = true;
         }
 
+        private static readonly Dictionary<int, bool> s_championCache = new Dictionary<int, bool>();
+        private static float s_championCacheClearTimer;
+
         public static void ResetSessionFlag()
         {
             s_rpcRegistered = false;
+            s_serverHuntKills = -1;
+            s_serverTargetThreshold = -1;
+            s_championCache.Clear();
         }
 
         public static bool IsChampion(Character ch)
         {
-            if (ch == null) return false;
+            if (ch == null || ch.IsPlayer()) return false;
+
+            if (Time.time - s_championCacheClearTimer > 5.0f)
+            {
+                s_championCacheClearTimer = Time.time;
+                if (s_championCache.Count > 256) s_championCache.Clear();
+            }
+
+            int id = ch.GetInstanceID();
+            bool cached;
+            if (s_championCache.TryGetValue(id, out cached))
+            {
+                return cached;
+            }
+
             ZNetView nv = ch.GetComponent<ZNetView>();
             if (nv == null || !nv.IsValid() || nv.GetZDO() == null) return false;
-            return nv.GetZDO().GetBool(ZdoIsChampion, false);
+            bool isChamp = nv.GetZDO().GetBool(ZdoIsChampion, false);
+            s_championCache[id] = isChamp;
+            return isChamp;
+        }
+
+        public static void InvalidateChampionCache(Character ch)
+        {
+            if (ch != null)
+            {
+                s_championCache.Remove(ch.GetInstanceID());
+            }
         }
 
         public static bool IsLargeSpecies(string prefabName)
@@ -409,72 +442,91 @@ namespace CoarstalsEnemyOverhaul
             ProcessSpeciesKillOnServer(prefabName, killerPos, killerPlayerId);
         }
 
+        private static int RollNextChampionKillThreshold()
+        {
+            int minKills = Mathf.Max(5, EnemyOverhaulConfig.HuntChampionMinKills.Value);
+            int maxKills = Mathf.Max(minKills, EnemyOverhaulConfig.HuntChampionMaxKills.Value);
+            return UnityEngine.Random.Range(minKills, maxKills + 1);
+        }
+
+        public static int GetCurrentTargetThreshold()
+        {
+            if (s_serverTargetThreshold <= 0)
+            {
+                s_serverTargetThreshold = RollNextChampionKillThreshold();
+            }
+            return s_serverTargetThreshold;
+        }
+
+        private static string UpgradeTinyDungeonCritterForChampion(string prefabName, Vector3 pos)
+        {
+            // If the 250th kill happens to be a tiny 10-HP Cave Bat (`Bat`), promote the ambush species to a real Frost Cave predator!
+            if (string.Equals(prefabName, "Bat", StringComparison.OrdinalIgnoreCase))
+            {
+                if (ZNetScene.instance != null && ZNetScene.instance.GetPrefab("Ulv") != null)
+                {
+                    return "Ulv";
+                }
+            }
+            return prefabName;
+        }
+
         private static void ProcessSpeciesKillOnServer(string prefabName, Vector3 killerPos, long killerPlayerId)
         {
             if (!EnemyOverhaulConfig.EnableChampions.Value || ZoneSystem.instance == null) return;
 
-            int currentKills = GetServerSpeciesKillCount(prefabName) + 1;
-            bool isLarge = IsLargeSpecies(prefabName);
+            int currentKills = GetServerGlobalKillCount() + 1;
+            int targetKills = GetCurrentTargetThreshold();
 
-            int minKills = isLarge
-                ? Mathf.Max(2, EnemyOverhaulConfig.LargeMobMinKills.Value)
-                : Mathf.Max(3, EnemyOverhaulConfig.SmallMobMinKills.Value);
-            int maxKills = isLarge
-                ? Mathf.Max(minKills, EnemyOverhaulConfig.LargeMobMaxKills.Value)
-                : Mathf.Max(minKills, EnemyOverhaulConfig.SmallMobMaxKills.Value);
-
-            bool triggerAmbush = false;
-            if (currentKills >= maxKills)
+            if (currentKills >= targetKills)
             {
-                triggerAmbush = true;
-            }
-            else if (currentKills >= minKills)
-            {
-                float span = Mathf.Max(1f, (float)(maxKills - minKills + 1));
-                float stepChance = (float)(currentKills - minKills + 1) / span;
-                if (UnityEngine.Random.value <= stepChance)
-                {
-                    triggerAmbush = true;
-                }
-            }
-
-            if (triggerAmbush)
-            {
-                SetServerSpeciesKillCount(prefabName, 0);
-                SpawnAmbushChampionNear(prefabName, killerPos);
+                string champSpecies = UpgradeTinyDungeonCritterForChampion(prefabName, killerPos);
+                SetServerGlobalKillCount(0, forcePersistToZoneSystem: true);
+                s_serverTargetThreshold = RollNextChampionKillThreshold();
+                SpawnAmbushChampionNear(champSpecies, killerPos);
             }
             else
             {
-                SetServerSpeciesKillCount(prefabName, currentKills);
+                // Persist checkpoint to ZoneSystem only every 25 kills to avoid network GlobalKey broadcasts on every single kill in dungeons!
+                bool checkpoint = (currentKills % 25 == 0);
+                SetServerGlobalKillCount(currentKills, forcePersistToZoneSystem: checkpoint);
             }
         }
 
-        public static int GetServerSpeciesKillCount(string prefabName)
+        public static int GetServerGlobalKillCount()
         {
-            if (ZoneSystem.instance == null || string.IsNullOrEmpty(prefabName)) return 0;
-            string prefix = GlobalKeyPrefix + prefabName.ToLowerInvariant() + "_";
+            if (s_serverHuntKills >= 0)
+            {
+                return s_serverHuntKills;
+            }
+
+            s_serverHuntKills = 0;
+            if (ZoneSystem.instance == null) return 0;
+
             List<string> keys = ZoneSystem.instance.GetGlobalKeys();
             if (keys == null) return 0;
 
             for (int i = 0; i < keys.Count; i++)
             {
                 string k = keys[i];
-                if (k != null && k.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                if (k != null && k.StartsWith(GlobalHuntKillsKeyPrefix, StringComparison.OrdinalIgnoreCase))
                 {
                     int val;
-                    if (int.TryParse(k.Substring(prefix.Length), out val))
+                    if (int.TryParse(k.Substring(GlobalHuntKillsKeyPrefix.Length), out val))
                     {
-                        return Mathf.Max(0, val);
+                        s_serverHuntKills = Mathf.Max(0, val);
+                        return s_serverHuntKills;
                     }
                 }
             }
             return 0;
         }
 
-        public static void SetServerSpeciesKillCount(string prefabName, int newCount)
+        public static void SetServerGlobalKillCount(int newCount, bool forcePersistToZoneSystem = true)
         {
-            if (ZoneSystem.instance == null || string.IsNullOrEmpty(prefabName)) return;
-            string prefix = GlobalKeyPrefix + prefabName.ToLowerInvariant() + "_";
+            s_serverHuntKills = Mathf.Max(0, newCount);
+            if (!forcePersistToZoneSystem || ZoneSystem.instance == null) return;
+
             List<string> keys = ZoneSystem.instance.GetGlobalKeys();
             if (keys != null)
             {
@@ -482,7 +534,7 @@ namespace CoarstalsEnemyOverhaul
                 for (int i = 0; i < keys.Count; i++)
                 {
                     string k = keys[i];
-                    if (k != null && k.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                    if (k != null && k.StartsWith(GlobalHuntKillsKeyPrefix, StringComparison.OrdinalIgnoreCase))
                     {
                         if (toRemove == null) toRemove = new List<string>();
                         toRemove.Add(k);
@@ -497,9 +549,9 @@ namespace CoarstalsEnemyOverhaul
                 }
             }
 
-            if (newCount > 0)
+            if (s_serverHuntKills > 0)
             {
-                ZoneSystem.instance.SetGlobalKey(prefix + newCount);
+                ZoneSystem.instance.SetGlobalKey(GlobalHuntKillsKeyPrefix + s_serverHuntKills);
             }
         }
 
@@ -575,29 +627,21 @@ namespace CoarstalsEnemyOverhaul
             string engTitle;
             EnemyLocalization.GenerateChampionIdentity(biome, seed, out rusTitle, out engTitle);
 
-            // Roll 1-2 combat perks
-            ChampionPerk perk1 = (ChampionPerk)UnityEngine.Random.Range(1, 4); // ElementalInfusion, BerserkFury, or PackCaller
+            // Every Champion ALWAYS has ElementalInfusion (toxin/frost/fire/lightning by biome) + optional secondary combat perk
+            ChampionPerk perk1 = ChampionPerk.ElementalInfusion;
             ChampionPerk perk2 = ChampionPerk.None;
             if (UnityEngine.Random.value <= 0.55f)
             {
-                perk2 = (perk1 == ChampionPerk.ElementalInfusion) ? ChampionPerk.BerserkFury : ChampionPerk.ElementalInfusion;
-            }
-            // Inside tight dungeons, prefer ElementalInfusion + BerserkFury over PackCaller so hallways don't clog
-            if (isDungeonWarden && perk1 == ChampionPerk.PackCaller)
-            {
-                perk1 = ChampionPerk.ElementalInfusion;
-                perk2 = ChampionPerk.BerserkFury;
+                perk2 = isDungeonWarden
+                    ? ChampionPerk.BerserkFury
+                    : (UnityEngine.Random.value <= 0.5f ? ChampionPerk.BerserkFury : ChampionPerk.PackCaller);
             }
 
-            // Set visual star level to 3 (level 4 in Valheim = 3 stars!) BEFORE overriding our exact custom HP (~x3.2)
+            // Set visual star level to 3 (level 4 in Valheim = 3 stars!) BEFORE applying exact 2-star HP (3.0x)
             float basePrefabHp = ch.m_health;
             ch.SetLevel(4);
 
-            float hpMult = Mathf.Max(1.2f, EnemyOverhaulConfig.ChampionHPMultiplier.Value);
-            if (isDungeonWarden)
-            {
-                hpMult *= 1.15f; // Dungeon Wardens are slightly beefier guardians of the seal
-            }
+            float hpMult = Mathf.Max(1.0f, EnemyOverhaulConfig.ChampionHPMultiplier.Value);
 
             // Modest co-op HP scaling (+25% per extra nearby player within 60m)
             int nearbyPlayers = CountNearbyAlivePlayers(creatureObj.transform.position, 65f);
@@ -629,6 +673,7 @@ namespace CoarstalsEnemyOverhaul
             zdo.Set(ZdoChampPerk2, (int)perk2);
             zdo.Set(ZdoChampBiome, (int)biome);
             zdo.Set(ZdoChampMaxHP, finalMaxHp);
+            s_championCache[ch.GetInstanceID()] = true;
 
             ChampionBehaviour comp = creatureObj.GetComponent<ChampionBehaviour>();
             if (comp == null) comp = creatureObj.AddComponent<ChampionBehaviour>();
@@ -799,44 +844,40 @@ namespace CoarstalsEnemyOverhaul
             ZDO zdo = nv.GetZDO();
             if (!zdo.GetBool(ZdoIsChampion, false)) return;
 
-            float dmgMult = Mathf.Max(1.0f, EnemyOverhaulConfig.ChampionDamageMultiplier.Value);
-            ScaleHitDamage(ref hit.m_damage, dmgMult);
+            Heightmap.Biome biome = (Heightmap.Biome)zdo.GetInt(ZdoChampBiome, (int)Heightmap.Biome.BlackForest);
 
-            int p1 = zdo.GetInt(ZdoChampPerk1, 0);
-            int p2 = zdo.GetInt(ZdoChampPerk2, 0);
-            if (p1 == (int)ChampionPerk.ElementalInfusion || p2 == (int)ChampionPerk.ElementalInfusion)
+            // Base Champion stats match a vanilla 2-star creature (`2.0x` damage & `3.0x` HP; vanilla 3-star 2.5x is cancelled to 1.0x
+            // in `Patch_Attack_GetLevelDamageFactor`), PLUS guaranteed biome elemental infusion (toxin/poison, frost, fire, lightning)!
+            float finalMult = Mathf.Max(0.5f, EnemyOverhaulConfig.ChampionDamageMultiplier.Value);
+            ScaleHitDamage(ref hit.m_damage, finalMult);
+
+            float totalDmg = hit.GetTotalDamage();
+            float elemBonus = Mathf.Max(4f, totalDmg * 0.15f);
+
+            switch (biome)
             {
-                Heightmap.Biome biome = (Heightmap.Biome)zdo.GetInt(ZdoChampBiome, (int)Heightmap.Biome.BlackForest);
-                float totalPhys = hit.m_damage.m_damage + hit.m_damage.m_blunt + hit.m_damage.m_slash + hit.m_damage.m_pierce;
-                float elemBonus = Mathf.Max(4f, totalPhys * 0.22f);
-
-                switch (biome)
-                {
-                    case Heightmap.Biome.Meadows:
-                        hit.m_damage.m_lightning += elemBonus;
-                        break;
-                    case Heightmap.Biome.BlackForest:
-                        hit.m_damage.m_poison += elemBonus * 0.5f;
-                        hit.m_damage.m_blunt += elemBonus * 0.5f;
-                        break;
-                    case Heightmap.Biome.Swamp:
-                        hit.m_damage.m_poison += elemBonus;
-                        break;
-                    case Heightmap.Biome.Mountain:
-                    case Heightmap.Biome.DeepNorth:
-                        hit.m_damage.m_frost += elemBonus;
-                        break;
-                    case Heightmap.Biome.Plains:
-                        hit.m_damage.m_fire += elemBonus;
-                        break;
-                    case Heightmap.Biome.Mistlands:
-                        hit.m_damage.m_lightning += elemBonus * 0.6f;
-                        hit.m_damage.m_poison += elemBonus * 0.6f;
-                        break;
-                    case Heightmap.Biome.AshLands:
-                        hit.m_damage.m_fire += elemBonus;
-                        break;
-                }
+                case Heightmap.Biome.Meadows:
+                    hit.m_damage.m_lightning += elemBonus;
+                    break;
+                case Heightmap.Biome.BlackForest:
+                case Heightmap.Biome.Swamp:
+                    hit.m_damage.m_poison += elemBonus;
+                    break;
+                case Heightmap.Biome.Mountain:
+                case Heightmap.Biome.DeepNorth:
+                    hit.m_damage.m_frost += elemBonus;
+                    break;
+                case Heightmap.Biome.Plains:
+                case Heightmap.Biome.AshLands:
+                    hit.m_damage.m_fire += elemBonus;
+                    break;
+                case Heightmap.Biome.Mistlands:
+                    hit.m_damage.m_lightning += elemBonus * 0.5f;
+                    hit.m_damage.m_poison += elemBonus * 0.5f;
+                    break;
+                default:
+                    hit.m_damage.m_poison += elemBonus;
+                    break;
             }
         }
 

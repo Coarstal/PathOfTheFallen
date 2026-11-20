@@ -26,13 +26,11 @@ namespace CoarstalsEnemyOverhaul
     public static class EnemyOverhaulConfig
     {
         // ====================================================================
-        // 1. Named Hunt Champions (Система Вендетты Биома)
+        // 1. Named Hunt Champions (Система Вендетты — каждые ~250 мобов)
         // ====================================================================
         public static ConfigEntry<bool> EnableChampions;
-        public static ConfigEntry<int> SmallMobMinKills;
-        public static ConfigEntry<int> SmallMobMaxKills;
-        public static ConfigEntry<int> LargeMobMinKills;
-        public static ConfigEntry<int> LargeMobMaxKills;
+        public static ConfigEntry<int> HuntChampionMinKills;
+        public static ConfigEntry<int> HuntChampionMaxKills;
         public static ConfigEntry<float> ChampionHPMultiplier;
         public static ConfigEntry<float> ChampionDamageMultiplier;
         public static ConfigEntry<float> ChampionScaleMultiplier;
@@ -95,43 +93,31 @@ namespace CoarstalsEnemyOverhaul
                 secChamp,
                 "EnableChampions",
                 true,
-                new ConfigDescription("Enable the server-wide per-species Hunt Champion ambush system.", null, adminAttr));
+                new ConfigDescription("Enable the server-wide Hunt Champion ambush system (~every 225-275 slain enemies).", null, adminAttr));
 
-            SmallMobMinKills = config.Bind(
+            HuntChampionMinKills = config.Bind(
                 secChamp,
-                "SmallMobMinKills",
-                25,
-                new ConfigDescription("Minimum kills of a common/small mob species before a Named Champion can ambush (~25-35).", null, adminAttr));
+                "HuntChampionMinKills",
+                225,
+                new ConfigDescription("Minimum global hostile mob kills before a Named Hunt Champion ambushes (~250 +/- 25 -> 225).", null, adminAttr));
 
-            SmallMobMaxKills = config.Bind(
+            HuntChampionMaxKills = config.Bind(
                 secChamp,
-                "SmallMobMaxKills",
-                35,
-                new ConfigDescription("Guaranteed kill threshold for a common/small mob species Champion ambush.", null, adminAttr));
-
-            LargeMobMinKills = config.Bind(
-                secChamp,
-                "LargeMobMinKills",
-                6,
-                new ConfigDescription("Minimum kills of a large/rare monster species (Troll, Abomination, StoneGolem, Berserker, Lox, SeekerBrute, Morgen, Asksvin) before a Champion can ambush (~6-10).", null, adminAttr));
-
-            LargeMobMaxKills = config.Bind(
-                secChamp,
-                "LargeMobMaxKills",
-                10,
-                new ConfigDescription("Guaranteed kill threshold for a large/rare monster species Champion ambush.", null, adminAttr));
+                "HuntChampionMaxKills",
+                275,
+                new ConfigDescription("Maximum global hostile mob kills before a Named Hunt Champion is guaranteed to ambush (~250 +/- 25 -> 275).", null, adminAttr));
 
             ChampionHPMultiplier = config.Bind(
                 secChamp,
-                "ChampionHPMultiplier",
-                3.2f,
-                new ConfigDescription("Health multiplier of a Named Champion relative to a base 0-star creature of that species (~3.2x).", null, adminAttr));
+                "ChampionHPMultiplierV3",
+                3.0f,
+                new ConfigDescription("Health multiplier of a Named Champion relative to a 0-star creature (3.0x = exact vanilla 2-star creature HP).", null, adminAttr));
 
             ChampionDamageMultiplier = config.Bind(
                 secChamp,
-                "ChampionDamageMultiplier",
-                1.75f,
-                new ConfigDescription("Damage multiplier of a Named Champion (~1.75x).", null, adminAttr));
+                "ChampionDamageMultiplierV3",
+                2.0f,
+                new ConfigDescription("Base damage multiplier of a Named Champion relative to a 0-star creature (2.0x = exact vanilla 2-star creature damage, plus guaranteed biome elemental damage).", null, adminAttr));
 
             ChampionScaleMultiplier = config.Bind(
                 secChamp,

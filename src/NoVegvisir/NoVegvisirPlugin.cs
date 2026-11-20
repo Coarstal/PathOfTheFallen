@@ -69,13 +69,40 @@ namespace NoVegvisir
             }
         }
 
+        private static bool MightContainVegvisir(GameObject go)
+        {
+            if (go == null) return false;
+            string n = go.name;
+            if (string.IsNullOrEmpty(n)) return false;
+
+            // Fast zero-hierarchy-walk filter for `ZNetScene.CreateObject` (which runs hundreds of times when loading dungeons/zones
+            // for torches, bones, creatures, drops, and VFX that can NEVER contain a Vegvisir!)
+            if (n.IndexOf("vegvisir", System.StringComparison.OrdinalIgnoreCase) >= 0 ||
+                n.IndexOf("runestone", System.StringComparison.OrdinalIgnoreCase) >= 0 ||
+                n.IndexOf("location", System.StringComparison.OrdinalIgnoreCase) >= 0 ||
+                n.IndexOf("crypt", System.StringComparison.OrdinalIgnoreCase) >= 0 ||
+                n.IndexOf("cave", System.StringComparison.OrdinalIgnoreCase) >= 0 ||
+                n.IndexOf("tomb", System.StringComparison.OrdinalIgnoreCase) >= 0 ||
+                n.IndexOf("dvergr", System.StringComparison.OrdinalIgnoreCase) >= 0 ||
+                n.IndexOf("altar", System.StringComparison.OrdinalIgnoreCase) >= 0 ||
+                n.IndexOf("stonecircle", System.StringComparison.OrdinalIgnoreCase) >= 0 ||
+                n.IndexOf("ruin", System.StringComparison.OrdinalIgnoreCase) >= 0 ||
+                n.IndexOf("tower", System.StringComparison.OrdinalIgnoreCase) >= 0 ||
+                n.IndexOf("fortress", System.StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return true;
+            }
+
+            return go.GetComponent<Location>() != null || go.GetComponent<Vegvisir>() != null;
+        }
+
         [HarmonyPatch(typeof(ZNetScene), "CreateObject")]
         public static class ZNetScene_CreateObject_Patch
         {
             [HarmonyPostfix]
             public static void Postfix(ref GameObject __result)
             {
-                if (__result != null && IsActive)
+                if (__result != null && IsActive && MightContainVegvisir(__result))
                 {
                     CleanVegvisir(__result);
                 }

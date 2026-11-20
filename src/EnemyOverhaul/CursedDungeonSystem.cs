@@ -26,6 +26,9 @@ namespace CoarstalsEnemyOverhaul
         public const int StateCursedCleansed = 2;
 
         public const string ZdoDungeonState = "CEO_CurseState";
+        public const string ZdoDungeonRuleVersion = "CEO_CurseVer";
+        public const string ZdoDungeonAdminForced = "CEO_AdminCurse";
+        public const int CurrentCurseRuleVersion = 2;
         public const string ZdoDungeonWardenSpawned = "CEO_WardenSpawned";
         public const string ZdoDungeonBiome = "CEO_DungBiome";
         public const string ZdoCursedMobApplied = "CEO_CursedMob";
@@ -51,9 +54,29 @@ namespace CoarstalsEnemyOverhaul
         private static GameObject s_localCurseFogRoot;
         private static ParticleSystem s_localCurseFogPs;
         private static Light s_localCurseAmbientLight;
+        private static bool s_lastFogActiveState;
+        private static Heightmap.Biome s_lastFogBiome = Heightmap.Biome.None;
         private static float s_checkTimer;
         private static float s_wardenCheckTimer;
         private static bool s_rpcRegistered;
+
+        // O(1) active dungeon caches to eliminate repeated scene-wide `FindObjectsByType` / `GetComponentsInChildren` microfreezes!
+        private static DungeonAnchor s_cachedAnchor;
+        private static Heightmap.Biome s_cachedAnchorBiome = Heightmap.Biome.None;
+        private static bool s_cachedIsSingleLair;
+        private static bool s_cachedSingleLairComputed;
+        private static Character s_cachedLiveWarden;
+        private static readonly HashSet<int> s_processedDungeonMobIds = new HashSet<int>();
+        private static readonly Dictionary<int, bool> s_cursedMobFlagCache = new Dictionary<int, bool>();
+        private static int s_hoverCachedPortalId;
+        private static float s_hoverCachedUntil;
+        private static bool s_hoverCachedSealed;
+
+        // Exact per-dungeon-type stratified 10% quota cache across all generated locations in the world
+        private static readonly HashSet<string> s_worldQuotaCursedIds = new HashSet<string>();
+        private static int s_worldQuotaBuiltLocationCount = -1;
+        private static float s_worldQuotaBuiltChance = -1f;
+        private static int s_worldQuotaSeed;
 
         /// <summary>
         /// Represents a single self-contained Dungeon instance (works identically for procedural Crypts/Caves with `DungeonGenerator`
@@ -85,16 +108,43 @@ namespace CoarstalsEnemyOverhaul
         {
             s_rpcRegistered = false;
             s_currentAnnouncedDungeonId = string.Empty;
+            s_cachedAnchor = default(DungeonAnchor);
+            s_cachedAnchorBiome = Heightmap.Biome.None;
+            s_cachedSingleLairComputed = false;
+            s_cachedLiveWarden = null;
+            s_processedDungeonMobIds.Clear();
+            s_cursedMobFlagCache.Clear();
+            s_hoverCachedPortalId = 0;
+            s_hoverCachedUntil = 0f;
+            s_lastFogActiveState = false;
+            s_lastFogBiome = Heightmap.Biome.None;
+            s_worldQuotaCursedIds.Clear();
+            s_worldQuotaBuiltLocationCount = -1;
+            s_worldQuotaBuiltChance = -1f;
             DestroyLocalCurseFog();
         }
 
         // ====================================================================
-        // Exact Hierarchy-Bound Dungeon Resolution (Zero cross-dungeon leakage!)
+        // Exact Hierarchy-Bound Dungeon Resolution (O(1) Cached Inside Active Dungeon!)
         // ====================================================================
         public static bool TryResolveDungeonAt(Vector3 worldPos, out DungeonAnchor anchor)
         {
             anchor = default(DungeonAnchor);
             if (worldPos.y < 3000f) return false;
+
+            // FAST O(1) CACHE HIT: While inside the same loaded dungeon (within 120m XZ & 65m Y of entrance),
+            // return the already-resolved `s_cachedAnchor` immediately with ZERO `FindObjectsByType` or `OverlapSphere` calls!
+            if (s_cachedAnchor.IsValid)
+            {
+                float dx = worldPos.x - s_cachedAnchor.EntranceInteriorPos.x;
+                float dz = worldPos.z - s_cachedAnchor.EntranceInteriorPos.z;
+                float dy = Mathf.Abs(worldPos.y - s_cachedAnchor.EntranceInteriorPos.y);
+                if (dy <= 65f && (dx * dx + dz * dz) <= 120f * 120f)
+                {
+                    anchor = s_cachedAnchor;
+                    return true;
+                }
+            }
 
             // 1) Find the closest interior Exit `Teleport` (`y > 3000m` whose target leads outdoors `y < 3000m` or is the entrance portal).
             //    Every single enterable dungeon in Valheim (Crypts, Sunken Crypts, Frost Caves, Infested Mines, Troll Caves, Charred Tombs)
@@ -320,23 +370,33 @@ namespace CoarstalsEnemyOverhaul
                     Mathf.RoundToInt(idPos.z));
             }
 
+            if (!s_cachedAnchor.IsValid || s_cachedAnchor.UniqueId != anchor.UniqueId)
+            {
+                s_cachedAnchor = anchor;
+                s_cachedAnchorBiome = GuessBiomeFromAnchor(anchor);
+                s_cachedSingleLairComputed = false;
+                s_cachedLiveWarden = null;
+                s_processedDungeonMobIds.Clear();
+            }
+            else
+            {
+                s_cachedAnchor = anchor;
+            }
+
             return true;
         }
 
         /// <summary>
-        /// Checks if `point` belongs to `anchor` (either inside a collider parented to `anchor` or closer to `anchor` than any other dungeon).
+        /// Pure O(1) spatial check (3 float subtractions — ZERO scene scans!) verifying `point` lies inside `anchor`'s sky-layer bounds.
         /// </summary>
         public static bool IsPointInDungeon(Vector3 point, DungeonAnchor anchor)
         {
             if (!anchor.IsValid || point.y < 3000f) return false;
-            if (Mathf.Abs(point.y - anchor.EntranceInteriorPos.y) > 55f) return false;
+            if (Mathf.Abs(point.y - anchor.EntranceInteriorPos.y) > 65f) return false;
 
-            DungeonAnchor resolved;
-            if (TryResolveDungeonAt(point, out resolved))
-            {
-                return resolved.UniqueId == anchor.UniqueId;
-            }
-            return (point - anchor.EntranceInteriorPos).sqrMagnitude <= 85f * 85f;
+            float dx = point.x - anchor.EntranceInteriorPos.x;
+            float dz = point.z - anchor.EntranceInteriorPos.z;
+            return (dx * dx + dz * dz) <= 115f * 115f;
         }
 
         // Legacy helper used by ChampionSystem for in-dungeon ambushes
@@ -392,6 +452,7 @@ namespace CoarstalsEnemyOverhaul
                     if (cNv.GetZDO().GetInt(ZdoDungeonState, StateUnrolled) != StateCursedCleansed)
                     {
                         cNv.GetZDO().Set(ZdoDungeonState, StateCursedCleansed);
+                        cNv.GetZDO().Set(ZdoDungeonRuleVersion, CurrentCurseRuleVersion);
                     }
                 }
                 return StateCursedCleansed;
@@ -401,29 +462,213 @@ namespace CoarstalsEnemyOverhaul
             if (nv != null && nv.IsValid() && nv.GetZDO() != null)
             {
                 ZDO zdo = nv.GetZDO();
+                if (zdo.GetBool(ZdoDungeonAdminForced, false))
+                {
+                    int forcedState = zdo.GetInt(ZdoDungeonState, StateCursedActive);
+                    return forcedState == StateCursedCleansed ? StateCursedCleansed : StateCursedActive;
+                }
+
+                int savedVer = zdo.GetInt(ZdoDungeonRuleVersion, 0);
                 int state = zdo.GetInt(ZdoDungeonState, StateUnrolled);
-                if (state != StateUnrolled)
+
+                // If host/singleplayer has full world location table, always enforce exact 10% per-type quota
+                // (also migrating any stale ZDOs written under older rule versions < CurrentCurseRuleVersion!)
+                bool hasWorldTable = ZoneSystem.instance != null &&
+                                     ZoneSystem.instance.m_locationInstances != null &&
+                                     ZoneSystem.instance.m_locationInstances.Count > 0;
+
+                if (state != StateUnrolled && savedVer == CurrentCurseRuleVersion && !hasWorldTable)
                 {
                     return state;
                 }
 
-                bool rolledCursed = RollDeterministicCurse(anchor);
-                int newState = rolledCursed ? StateCursedActive : StateNormal;
+                bool selectedCursed = IsDungeonInExactTypeQuota(anchor.UniqueId);
+                int expectedState = selectedCursed ? StateCursedActive : StateNormal;
 
-                if (nv.IsOwner())
+                if (state == StateCursedCleansed)
                 {
-                    zdo.Set(ZdoDungeonState, newState);
-                    zdo.Set(ZdoDungeonBiome, (int)GuessBiomeFromAnchor(anchor));
+                    return StateCursedCleansed;
                 }
-                return newState;
+
+                if ((state != expectedState || savedVer != CurrentCurseRuleVersion) && nv.IsOwner())
+                {
+                    zdo.Set(ZdoDungeonState, expectedState);
+                    zdo.Set(ZdoDungeonRuleVersion, CurrentCurseRuleVersion);
+                    zdo.Set(ZdoDungeonBiome, (int)GuessBiomeFromAnchor(anchor));
+
+                    // If an old pre-quota save had marked this dungeon Cursed and spawned a Warden, clean up the stale Warden once!
+                    if (expectedState == StateNormal && state == StateCursedActive && ZNetScene.instance != null)
+                    {
+                        Character staleWarden = FindLiveWardenInDungeon(anchor);
+                        if (staleWarden != null)
+                        {
+                            ZNetView wNv = staleWarden.GetComponent<ZNetView>();
+                            if (wNv != null && wNv.IsValid() && wNv.IsOwner())
+                            {
+                                ZNetScene.instance.Destroy(staleWarden.gameObject);
+                            }
+                            s_cachedLiveWarden = null;
+                        }
+                    }
+                }
+
+                return hasWorldTable ? expectedState : (state != StateUnrolled && savedVer == CurrentCurseRuleVersion ? state : expectedState);
             }
 
-            return RollDeterministicCurse(anchor) ? StateCursedActive : StateNormal;
+            return IsDungeonInExactTypeQuota(anchor.UniqueId) ? StateCursedActive : StateNormal;
         }
 
-        private static bool RollDeterministicCurse(DungeonAnchor anchor)
+        private struct DungeonSortCandidate
         {
-            return RollDeterministicCurseById(anchor.UniqueId);
+            public string UniqueId;
+            public uint SortHash;
+            public int ZoneX;
+            public int ZoneY;
+        }
+
+        private static uint ComputeUnsignedDungeonHash(int worldSeed, string uniqueId)
+        {
+            unchecked
+            {
+                uint h = (uint)worldSeed ^ 0x9E3779B9u;
+                if (!string.IsNullOrEmpty(uniqueId))
+                {
+                    for (int i = 0; i < uniqueId.Length; i++)
+                    {
+                        h ^= uniqueId[i];
+                        h *= 0x01000193u; // FNV-1a prime
+                    }
+                }
+                // MurmurHash3 32-bit finalizer (strictly unsigned shifts `>>` on `uint`!)
+                h ^= h >> 16;
+                h *= 0x85EBCA6Bu;
+                h ^= h >> 13;
+                h *= 0xC2B2AE35u;
+                h ^= h >> 16;
+                return h;
+            }
+        }
+
+        private static string GetCanonicalDungeonTypeGroup(string prefabName)
+        {
+            if (string.IsNullOrEmpty(prefabName)) return null;
+            string low = prefabName.ToLowerInvariant();
+
+            // Never auto-curse Hildir's 3 unique 1-per-world quest locations
+            if (low.StartsWith("hildir_")) return null;
+
+            if (low.StartsWith("trollcave")) return "TrollCave";
+            if (low.StartsWith("crypt")) return "BurialChamber";
+            if (low.StartsWith("sunkencrypt")) return "SunkenCrypt";
+            if (low.StartsWith("mountaincave")) return "FrostCave";
+            if (low.StartsWith("mistlands_dvergrtown")) return "InfestedMine";
+            if (low.StartsWith("morgencave")) return "MorgenCave";
+            if (low.StartsWith("charredtomb")) return "CharredTomb";
+            return null;
+        }
+
+        private static void EnsureWorldPerTypeCurseQuotaBuilt()
+        {
+            if (ZoneSystem.instance == null || ZoneSystem.instance.m_locationInstances == null) return;
+            Dictionary<Vector2s, ZoneSystem.LocationInstance> instances = ZoneSystem.instance.m_locationInstances;
+            if (instances.Count == 0) return;
+
+            float chance = Mathf.Clamp01(EnemyOverhaulConfig.CursedDungeonChance.Value);
+            int seed = WorldGenerator.instance != null ? WorldGenerator.instance.GetSeed() : 1337;
+
+            if (s_worldQuotaBuiltLocationCount == instances.Count &&
+                Mathf.Abs(s_worldQuotaBuiltChance - chance) < 0.0001f &&
+                s_worldQuotaSeed == seed)
+            {
+                return;
+            }
+
+            s_worldQuotaCursedIds.Clear();
+            s_worldQuotaBuiltLocationCount = instances.Count;
+            s_worldQuotaBuiltChance = chance;
+            s_worldQuotaSeed = seed;
+
+            if (chance <= 0f) return;
+
+            Dictionary<string, List<DungeonSortCandidate>> byType = new Dictionary<string, List<DungeonSortCandidate>>(StringComparer.Ordinal);
+
+            foreach (KeyValuePair<Vector2s, ZoneSystem.LocationInstance> kv in instances)
+            {
+                ZoneSystem.LocationInstance inst = kv.Value;
+                if (inst.m_location == null) continue;
+
+                string prefabName = inst.m_location.m_prefabName;
+                if (string.IsNullOrEmpty(prefabName) && inst.m_location.m_prefab.IsValid)
+                {
+                    prefabName = inst.m_location.m_prefab.Name;
+                }
+
+                string group = GetCanonicalDungeonTypeGroup(prefabName);
+                if (group == null) continue;
+
+                Vector2s z = kv.Key;
+                string uid = string.Format("dg_z_{0}_{1}", z.x, z.y);
+
+                List<DungeonSortCandidate> list;
+                if (!byType.TryGetValue(group, out list))
+                {
+                    list = new List<DungeonSortCandidate>(64);
+                    byType[group] = list;
+                }
+
+                DungeonSortCandidate cand;
+                cand.UniqueId = uid;
+                cand.SortHash = ComputeUnsignedDungeonHash(seed, uid);
+                cand.ZoneX = z.x;
+                cand.ZoneY = z.y;
+                list.Add(cand);
+            }
+
+            // Pick EXACTLY `Round(totalOfType * chance)` (10%) dungeons within EACH dungeon type independently!
+            foreach (KeyValuePair<string, List<DungeonSortCandidate>> kv in byType)
+            {
+                List<DungeonSortCandidate> list = kv.Value;
+                int total = list.Count;
+                if (total == 0) continue;
+
+                list.Sort(delegate(DungeonSortCandidate a, DungeonSortCandidate b)
+                {
+                    int c = a.SortHash.CompareTo(b.SortHash);
+                    if (c != 0) return c;
+                    c = a.ZoneX.CompareTo(b.ZoneX);
+                    return c != 0 ? c : a.ZoneY.CompareTo(b.ZoneY);
+                });
+
+                int quota = (chance >= 1f) ? total : Mathf.RoundToInt(total * chance);
+                if (quota == 0 && chance > 0f && total >= 5)
+                {
+                    quota = 1;
+                }
+                quota = Mathf.Clamp(quota, 0, total);
+
+                for (int i = 0; i < quota; i++)
+                {
+                    s_worldQuotaCursedIds.Add(list[i].UniqueId);
+                }
+            }
+        }
+
+        public static bool IsDungeonInExactTypeQuota(string uniqueId)
+        {
+            if (string.IsNullOrEmpty(uniqueId)) return false;
+            float chance = Mathf.Clamp01(EnemyOverhaulConfig.CursedDungeonChance.Value);
+            if (chance <= 0f) return false;
+            if (chance >= 1f) return true;
+
+            if (ZoneSystem.instance != null &&
+                ZoneSystem.instance.m_locationInstances != null &&
+                ZoneSystem.instance.m_locationInstances.Count > 0)
+            {
+                EnsureWorldPerTypeCurseQuotaBuilt();
+                return s_worldQuotaCursedIds.Contains(uniqueId);
+            }
+
+            return RollDeterministicCurseById(uniqueId);
         }
 
         public static bool RollDeterministicCurseById(string uniqueId)
@@ -433,25 +678,36 @@ namespace CoarstalsEnemyOverhaul
             if (chance >= 1f) return true;
 
             int worldSeed = WorldGenerator.instance != null ? WorldGenerator.instance.GetSeed() : 1337;
-            int hash = worldSeed ^ uniqueId.GetStableHashCode();
-            unchecked
-            {
-                hash ^= (hash >> 15);
-                hash *= 0x2c1b3c6d;
-                hash ^= (hash >> 12);
-            }
-            double normalized = (uint)hash / (double)uint.MaxValue;
+            uint hash = ComputeUnsignedDungeonHash(worldSeed, uniqueId);
+            double normalized = hash / (double)uint.MaxValue;
             return normalized < chance;
         }
 
         public static bool IsSingleBossLairDungeon(DungeonAnchor anchor)
         {
+            if (s_cachedAnchor.IsValid && s_cachedAnchor.UniqueId == anchor.UniqueId && s_cachedSingleLairComputed)
+            {
+                return s_cachedIsSingleLair;
+            }
+
+            bool result = ComputeIsSingleBossLairDungeon(anchor);
+            if (s_cachedAnchor.IsValid && s_cachedAnchor.UniqueId == anchor.UniqueId)
+            {
+                s_cachedIsSingleLair = result;
+                s_cachedSingleLairComputed = true;
+            }
+            return result;
+        }
+
+        private static bool ComputeIsSingleBossLairDungeon(DungeonAnchor anchor)
+        {
             string dgName = anchor.Generator != null ? anchor.Generator.gameObject.name.ToLowerInvariant() : "";
             string locName = anchor.ParentLocation != null ? anchor.ParentLocation.gameObject.name.ToLowerInvariant() : "";
             string rootName = anchor.InteriorRoot != null ? anchor.InteriorRoot.name.ToLowerInvariant() : "";
 
-            // Troll Caves (`TrollCave02` / `DG_Cave`) and single-monster Morgen / Lair caves
-            if (dgName.Contains("trollcave") || dgName.StartsWith("dg_cave") || locName.Contains("trollcave") || rootName.Contains("trollcave") ||
+            // Troll Caves (`TrollCave02`) and single-monster Morgen / Lair caves.
+            // NOTE: NEVER match `dg_cave` here — in Valheim, `DG_Cave` is the procedural multi-room Mountain Frost Cave (`MountainCave02`)!
+            if (dgName.Contains("trollcave") || locName.Contains("trollcave") || rootName.Contains("trollcave") ||
                 locName.Contains("morgencave"))
             {
                 return true;
@@ -486,11 +742,23 @@ namespace CoarstalsEnemyOverhaul
         // Strict Live Warden Lookup & Guaranteed In-Dungeon Spawn / Leash
         // ====================================================================
         /// <summary>
-        /// Finds the live Cursed Warden Champion bound to `anchor.UniqueId` ONLY IF he is physically alive inside this loaded dungeon!
+        /// Finds the live Cursed Warden Champion bound to `anchor.UniqueId` in O(1) via cached reference when already resolved!
         /// </summary>
         public static Character FindLiveWardenInDungeon(DungeonAnchor anchor)
         {
             if (!anchor.IsValid) return null;
+
+            // Fast O(1) path: if our cached Warden is alive inside this dungeon, return immediately with ZERO raycasts or loops!
+            if (s_cachedLiveWarden != null && !s_cachedLiveWarden.IsDead() && IsPointInDungeon(s_cachedLiveWarden.transform.position, anchor))
+            {
+                ZNetView cachedNv = s_cachedLiveWarden.GetComponent<ZNetView>();
+                if (cachedNv != null && cachedNv.IsValid() && cachedNv.GetZDO() != null &&
+                    cachedNv.GetZDO().GetString(ChampionSystem.ZdoWardenDungeonId, "") == anchor.UniqueId)
+                {
+                    return s_cachedLiveWarden;
+                }
+            }
+
             List<Character> allChars = Character.GetAllCharacters();
             if (allChars == null) return null;
 
@@ -498,6 +766,7 @@ namespace CoarstalsEnemyOverhaul
             {
                 Character ch = allChars[i];
                 if (ch == null || ch.IsPlayer() || ch.IsDead()) continue;
+                if (ch.transform.position.y < 3000f) continue;
 
                 ZNetView nv = ch.GetComponent<ZNetView>();
                 if (nv == null || !nv.IsValid() || nv.GetZDO() == null) continue;
@@ -506,49 +775,23 @@ namespace CoarstalsEnemyOverhaul
                 if (!zdo.GetBool(ChampionSystem.ZdoIsDungeonWarden, false)) continue;
                 if (zdo.GetString(ChampionSystem.ZdoWardenDungeonId, "") != anchor.UniqueId) continue;
 
-                // Verify the Warden is inside THIS dungeon (not fallen into the sky/ground below y=3000, not in a different dungeon,
-                // and NOT sitting on the exterior roof with no ceiling above his head!).
-                // Note: Do NOT check `upHit.distance < 1.65f` during live combat walking, because walking under low crypt doorways/arches
-                // has ~1.5m ceiling clearance and must NEVER trigger a relocation!
-                RaycastHit[] roofHits = Physics.RaycastAll(ch.transform.position + Vector3.up * 0.6f, Vector3.up, 26f, ~0, QueryTriggerInteraction.Ignore);
-                bool hasCeilingAbove = false;
-                if (roofHits != null)
+                if (!IsPointInDungeon(ch.transform.position, anchor))
                 {
-                    for (int r = 0; r < roofHits.Length; r++)
+                    if (nv.IsOwner())
                     {
-                        if (roofHits[r].collider != null && roofHits[r].collider.GetComponentInParent<Character>() == null)
+                        Vector3 safeFloor;
+                        string unused;
+                        if (TryFindGuaranteedFloorInsideDungeon(anchor, out safeFloor, out unused))
                         {
-                            hasCeilingAbove = true;
-                            break;
+                            Rigidbody rb = ch.GetComponent<Rigidbody>();
+                            if (rb != null) rb.linearVelocity = Vector3.zero;
+                            ch.transform.position = safeFloor;
+                            zdo.SetPosition(safeFloor);
+                            zdo.Set(ChampionSystem.ZdoWardenAnchorPos, safeFloor);
                         }
-                    }
-                }
-
-                bool insideOurRooms = ch.transform.position.y >= 3000f &&
-                                      hasCeilingAbove &&
-                                      IsPointInDungeon(ch.transform.position, anchor);
-
-                if (!insideOurRooms && nv.IsOwner())
-                {
-                    Vector3 safeFloor;
-                    string unused;
-                    if (TryFindGuaranteedFloorInsideDungeon(anchor, out safeFloor, out unused))
-                    {
-                        Rigidbody rb = ch.GetComponent<Rigidbody>();
-                        if (rb != null) rb.linearVelocity = Vector3.zero;
-                        ch.transform.position = safeFloor;
-                        zdo.SetPosition(safeFloor);
-                        zdo.Set(ChampionSystem.ZdoWardenAnchorPos, safeFloor);
-                        MonsterAI wAi = ch.GetComponent<MonsterAI>();
-                        if (wAi != null)
+                        else
                         {
-                            wAi.SetPatrolPoint();
-                            wAi.SetHuntPlayer(true);
-                            wAi.Alert();
-                        }
-                        if (CoarstalsEnemyOverhaulPlugin.ModLogger != null)
-                        {
-                            CoarstalsEnemyOverhaulPlugin.ModLogger.LogInfo("[EnemyOverhaul] Relocated stray/roof Warden directly onto interior floor of " + anchor.UniqueId + " at " + safeFloor);
+                            continue;
                         }
                     }
                     else
@@ -556,24 +799,13 @@ namespace CoarstalsEnemyOverhaul
                         continue;
                     }
                 }
-                else if (!insideOurRooms && !nv.IsOwner())
-                {
-                    continue;
-                }
 
+                s_cachedLiveWarden = ch;
                 return ch;
             }
             return null;
         }
 
-        /// <summary>
-        /// Checks if an interior exit Teleport is sealed by a curse.
-        /// CRITICAL ANTI-SOFTLOCK GUARANTEE:
-        /// When a player interacts with or touches the exit portal, if the dungeon is marked Cursed BUT no live Warden exists inside it:
-        /// 1) We immediately try to spawn the Warden right inside this dungeon so the player has a real boss to fight!
-        /// 2) If spawning STILL cannot produce a live Warden in this dungeon for any reason -> we NEVER lock the door!
-        /// Thus, standing in an empty locked dungeon with no boss is 100% IMPOSSIBLE even without devcommands!
-        /// </summary>
         private static float s_dungeonEntryTime;
 
         public static bool IsExitTeleportSealed(Teleport tp, bool allowSpawnFallback = true)
@@ -584,17 +816,29 @@ namespace CoarstalsEnemyOverhaul
             if (tp.transform.position.y < 3000f) return false;
             if (tp.m_targetPoint != null && tp.m_targetPoint.transform.position.y > 3000f) return false;
 
+            // Fast per-frame hover cache (`GetHoverText` runs 60-144x/sec while looking near the exit!)
+            if (!allowSpawnFallback)
+            {
+                int tpId = tp.GetInstanceID();
+                if (tpId == s_hoverCachedPortalId && Time.time < s_hoverCachedUntil)
+                {
+                    return s_hoverCachedSealed;
+                }
+
+                DungeonAnchor hAnchor;
+                bool isSealed = TryResolveDungeonAt(tp.transform.position, out hAnchor) &&
+                                GetOrInitDungeonCurseState(hAnchor) == StateCursedActive;
+                s_hoverCachedPortalId = tpId;
+                s_hoverCachedUntil = Time.time + 0.5f;
+                s_hoverCachedSealed = isSealed;
+                return isSealed;
+            }
+
             DungeonAnchor anchor;
             if (!TryResolveDungeonAt(tp.transform.position, out anchor)) return false;
 
             int state = GetOrInitDungeonCurseState(anchor);
             if (state != StateCursedActive) return false;
-
-            // Hover text check is strictly read-only so looking at the exit portal on frame 1 NEVER spawns the boss on the player's head!
-            if (!allowSpawnFallback)
-            {
-                return true;
-            }
 
             // Verify there is ACTUALLY a live Warden Champion inside this dungeon!
             Character liveWarden = FindLiveWardenInDungeon(anchor);
@@ -647,7 +891,15 @@ namespace CoarstalsEnemyOverhaul
 
             if (localPlayer.transform.position.y < 3000f)
             {
-                s_currentAnnouncedDungeonId = string.Empty;
+                if (!string.IsNullOrEmpty(s_currentAnnouncedDungeonId) || s_cachedAnchor.IsValid)
+                {
+                    s_currentAnnouncedDungeonId = string.Empty;
+                    s_cachedAnchor = default(DungeonAnchor);
+                    s_cachedSingleLairComputed = false;
+                    s_cachedLiveWarden = null;
+                    s_processedDungeonMobIds.Clear();
+                    s_hoverCachedUntil = 0f;
+                }
                 SetLocalCurseFogActive(false, Heightmap.Biome.BlackForest);
                 return;
             }
@@ -676,7 +928,9 @@ namespace CoarstalsEnemyOverhaul
                 return;
             }
 
-            Heightmap.Biome biome = GuessBiomeFromAnchor(anchor);
+            Heightmap.Biome biome = (s_cachedAnchor.IsValid && s_cachedAnchor.UniqueId == anchor.UniqueId && s_cachedAnchorBiome != Heightmap.Biome.None)
+                ? s_cachedAnchorBiome
+                : GuessBiomeFromAnchor(anchor);
 
             if (s_currentAnnouncedDungeonId != anchor.UniqueId)
             {
@@ -696,7 +950,7 @@ namespace CoarstalsEnemyOverhaul
             s_wardenCheckTimer -= 0.65f;
             if (s_wardenCheckTimer <= 0f)
             {
-                s_wardenCheckTimer = 1.5f;
+                s_wardenCheckTimer = 3.0f;
                 EnsureWardenAndBuffedMobsInDungeon(anchor, forceImmediateNearPlayerIfEmpty: false);
             }
         }
@@ -704,7 +958,9 @@ namespace CoarstalsEnemyOverhaul
         private static void EnsureWardenAndBuffedMobsInDungeon(DungeonAnchor anchor, bool forceImmediateNearPlayerIfEmpty)
         {
             if (!anchor.IsValid) return;
-            Heightmap.Biome biome = GuessBiomeFromAnchor(anchor);
+            Heightmap.Biome biome = (s_cachedAnchor.IsValid && s_cachedAnchor.UniqueId == anchor.UniqueId && s_cachedAnchorBiome != Heightmap.Biome.None)
+                ? s_cachedAnchorBiome
+                : GuessBiomeFromAnchor(anchor);
             bool isSingleBossLair = IsSingleBossLairDungeon(anchor);
 
             // 1) In single-monster lairs (like Troll Caves), ONLY the Cursed Warden Boss should exist inside —
@@ -712,6 +968,23 @@ namespace CoarstalsEnemyOverhaul
             //    In multi-room dungeons (Crypts, Caves, Mines), buff regular mobs (+30% HP, +30% damage).
             List<Character> allChars = Character.GetAllCharacters();
             Character existingLiveWarden = FindLiveWardenInDungeon(anchor);
+
+            // Auto-migrate legacy mis-spawned Troll Warden inside Mountain Frost Caves (`DG_Cave` bug in <= v1.0.1)
+            if (existingLiveWarden != null && biome == Heightmap.Biome.Mountain)
+            {
+                string wPrefab = Utils.GetPrefabName(existingLiveWarden.gameObject);
+                if (!string.IsNullOrEmpty(wPrefab) && wPrefab.StartsWith("Troll", StringComparison.OrdinalIgnoreCase))
+                {
+                    ZNetView wNv = existingLiveWarden.GetComponent<ZNetView>();
+                    if (wNv != null && wNv.IsValid() && wNv.IsOwner() && ZNetScene.instance != null)
+                    {
+                        ZNetScene.instance.Destroy(existingLiveWarden.gameObject);
+                        existingLiveWarden = null;
+                        s_cachedLiveWarden = null;
+                    }
+                }
+            }
+
             Character candidateToPromote = null;
 
             if (allChars != null)
@@ -721,13 +994,20 @@ namespace CoarstalsEnemyOverhaul
                     Character ch = allChars[i];
                     if (ch == null || ch.IsPlayer() || ch.IsDead() || ch.IsTamed()) continue;
                     if (ch.transform.position.y < 3000f) continue;
+
+                    int mobId = ch.GetInstanceID();
+                    if (!isSingleBossLair && s_processedDungeonMobIds.Contains(mobId)) continue;
                     if (!IsPointInDungeon(ch.transform.position, anchor)) continue;
 
                     ZNetView cNv = ch.GetComponent<ZNetView>();
                     if (cNv == null || !cNv.IsValid() || cNv.GetZDO() == null) continue;
                     ZDO cZdo = cNv.GetZDO();
 
-                    if (cZdo.GetBool(ChampionSystem.ZdoIsChampion, false)) continue;
+                    if (cZdo.GetBool(ChampionSystem.ZdoIsChampion, false))
+                    {
+                        s_processedDungeonMobIds.Add(mobId);
+                        continue;
+                    }
 
                     if (isSingleBossLair)
                     {
@@ -758,14 +1038,21 @@ namespace CoarstalsEnemyOverhaul
                         ch.SetHealth(newMax);
                         cZdo.Set(ZdoCursedMobApplied, true);
                         cZdo.Set(ZdoCursedMobMaxHP, newMax);
+                        s_cursedMobFlagCache[mobId] = true;
+                        s_processedDungeonMobIds.Add(mobId);
                     }
-                    else if (cZdo.GetBool(ZdoCursedMobApplied, false) && cNv.IsOwner())
+                    else if (cZdo.GetBool(ZdoCursedMobApplied, false))
                     {
-                        float savedMax = cZdo.GetFloat(ZdoCursedMobMaxHP, 0f);
-                        if (savedMax > 1f && Mathf.Abs(ch.GetMaxHealth() - savedMax) > 1f)
+                        if (cNv.IsOwner())
                         {
-                            ch.SetMaxHealth(savedMax);
+                            float savedMax = cZdo.GetFloat(ZdoCursedMobMaxHP, 0f);
+                            if (savedMax > 1f && Mathf.Abs(ch.GetMaxHealth() - savedMax) > 1f)
+                            {
+                                ch.SetMaxHealth(savedMax);
+                            }
                         }
+                        s_cursedMobFlagCache[mobId] = true;
+                        s_processedDungeonMobIds.Add(mobId);
                     }
                 }
             }
@@ -1169,6 +1456,7 @@ namespace CoarstalsEnemyOverhaul
 
             GameObject wardenObj = UnityEngine.Object.Instantiate(prefab, spawnPos, Quaternion.identity);
             ChampionSystem.ImbueAsChampion(wardenObj, biome, isDungeonWarden: true, wardenDungeonId: anchor.UniqueId);
+            s_cachedLiveWarden = wardenObj.GetComponent<Character>();
 
             MonsterAI ai = wardenObj.GetComponent<MonsterAI>();
             if (ai != null)
@@ -1198,7 +1486,8 @@ namespace CoarstalsEnemyOverhaul
             string locName = anchor.ParentLocation != null ? anchor.ParentLocation.gameObject.name.ToLowerInvariant() : "";
             string rootName = anchor.InteriorRoot != null ? anchor.InteriorRoot.name.ToLowerInvariant() : "";
 
-            if (dgName.Contains("trollcave") || dgName.StartsWith("dg_cave") || locName.Contains("trollcave") || rootName.Contains("trollcave"))
+            // Only actual Black Forest Troll Caves (`TrollCave02`) get a Troll Warden — NEVER `DG_Cave` (Mountain Frost Caves)!
+            if (dgName.Contains("trollcave") || locName.Contains("trollcave") || rootName.Contains("trollcave"))
             {
                 return "Troll";
             }
@@ -1210,7 +1499,9 @@ namespace CoarstalsEnemyOverhaul
                 case Heightmap.Biome.Swamp:
                     return "Draugr_Elite";
                 case Heightmap.Biome.Mountain:
-                    return "Fenring_Cultist";
+                    return (ZNetScene.instance != null && ZNetScene.instance.GetPrefab("Fenring_Cultist") != null)
+                        ? "Fenring_Cultist"
+                        : "Fenring";
                 case Heightmap.Biome.Mistlands:
                     return "SeekerBrute";
                 case Heightmap.Biome.AshLands:
@@ -1228,10 +1519,25 @@ namespace CoarstalsEnemyOverhaul
             if (anchor.InteriorRoot != null) n += anchor.InteriorRoot.name.ToLowerInvariant();
 
             if (n.Contains("sunkencrypt") || n.Contains("swamp")) return Heightmap.Biome.Swamp;
-            if (n.Contains("mountaincave") || n.Contains("frost")) return Heightmap.Biome.Mountain;
+            if (n.Contains("mountaincave") || n.Contains("hildir_cave") || n.Contains("frost")) return Heightmap.Biome.Mountain;
             if (n.Contains("dvergr") || n.Contains("mist") || n.Contains("infested")) return Heightmap.Biome.Mistlands;
             if (n.Contains("ash") || n.Contains("morgen") || n.Contains("charred") || n.Contains("tomb")) return Heightmap.Biome.AshLands;
-            if (n.Contains("forestcrypt") || n.Contains("trollcave") || n.Contains("dg_cave")) return Heightmap.Biome.BlackForest;
+            if (n.Contains("forestcrypt") || n.Contains("hildir_crypt") || n.Contains("trollcave")) return Heightmap.Biome.BlackForest;
+
+            // `DG_Cave` in Valheim is the procedural generator used by Mountain Frost Caves (`MountainCave02` / `Hildir_cave`)!
+            if (n.Contains("dg_cave"))
+            {
+                if (anchor.ParentLocation != null && anchor.ParentLocation.m_biome != Heightmap.Biome.None)
+                {
+                    return anchor.ParentLocation.m_biome;
+                }
+                if (WorldGenerator.instance != null)
+                {
+                    Heightmap.Biome wb = WorldGenerator.instance.GetBiome(new Vector3(anchor.EntranceInteriorPos.x, 0f, anchor.EntranceInteriorPos.z));
+                    if (wb != Heightmap.Biome.None) return wb;
+                }
+                return Heightmap.Biome.Mountain;
+            }
 
             if (anchor.ParentLocation != null && anchor.ParentLocation.m_biome != Heightmap.Biome.None)
             {
@@ -1247,10 +1553,20 @@ namespace CoarstalsEnemyOverhaul
 
         public static bool IsCursedDungeonCreature(Character ch)
         {
-            if (ch == null) return false;
+            if (ch == null || ch.IsPlayer()) return false;
+            int id = ch.GetInstanceID();
+            bool cached;
+            if (s_cursedMobFlagCache.TryGetValue(id, out cached))
+            {
+                return cached;
+            }
+            if (s_cursedMobFlagCache.Count > 256) s_cursedMobFlagCache.Clear();
+
             ZNetView nv = ch.GetComponent<ZNetView>();
             if (nv == null || !nv.IsValid() || nv.GetZDO() == null) return false;
-            return nv.GetZDO().GetBool(ZdoCursedMobApplied, false);
+            bool isCursed = nv.GetZDO().GetBool(ZdoCursedMobApplied, false);
+            s_cursedMobFlagCache[id] = isCursed;
+            return isCursed;
         }
 
         public static void NotifyDungeonWardenSlain(Character warden)
@@ -1260,6 +1576,9 @@ namespace CoarstalsEnemyOverhaul
             if (nv == null || !nv.IsValid() || nv.GetZDO() == null) return;
             ZDO zdo = nv.GetZDO();
             if (!zdo.GetBool(ChampionSystem.ZdoIsDungeonWarden, false)) return;
+
+            s_cachedLiveWarden = null;
+            s_hoverCachedUntil = 0f;
 
             string dungeonId = zdo.GetString(ChampionSystem.ZdoWardenDungeonId, "");
             Vector3 deathPos = warden.transform.position;
@@ -1292,6 +1611,8 @@ namespace CoarstalsEnemyOverhaul
 
         private static void OnRPC_DungeonCleansed(long sender, string dungeonId, Vector3 deathPos)
         {
+            s_hoverCachedUntil = 0f;
+            s_cachedLiveWarden = null;
             DungeonAnchor anchor;
             if (TryResolveDungeonAt(deathPos, out anchor))
             {
@@ -1342,11 +1663,16 @@ namespace CoarstalsEnemyOverhaul
             {
                 nv.ClaimOwnership();
                 nv.GetZDO().Set(ZdoDungeonState, StateCursedActive);
+                nv.GetZDO().Set(ZdoDungeonRuleVersion, CurrentCurseRuleVersion);
+                nv.GetZDO().Set(ZdoDungeonAdminForced, true);
                 nv.GetZDO().Set(ZdoDungeonWardenSpawned, false);
                 nv.GetZDO().Set(ZdoDungeonBiome, (int)GuessBiomeFromAnchor(anchor));
             }
 
             s_currentAnnouncedDungeonId = string.Empty;
+            s_hoverCachedUntil = 0f;
+            s_cachedLiveWarden = null;
+            s_processedDungeonMobIds.Clear();
             EnsureWardenAndBuffedMobsInDungeon(anchor, forceImmediateNearPlayerIfEmpty: true);
             statusMsg = "Current dungeon (" + anchor.UniqueId + ") is now CURSED & SEALED! Warden Champion spawned inside!";
         }
@@ -1369,6 +1695,8 @@ namespace CoarstalsEnemyOverhaul
             if (nv != null && nv.IsValid() && nv.GetZDO() != null)
             {
                 nv.ClaimOwnership();
+                nv.GetZDO().Set(ZdoDungeonAdminForced, false);
+                nv.GetZDO().Set(ZdoDungeonRuleVersion, CurrentCurseRuleVersion);
                 nv.GetZDO().Set(ZdoDungeonState, StateCursedCleansed);
             }
 
@@ -1388,24 +1716,7 @@ namespace CoarstalsEnemyOverhaul
 
         private static bool IsEnterableDungeonLocationPrefab(string prefabName)
         {
-            if (string.IsNullOrEmpty(prefabName)) return false;
-            string low = prefabName.ToLowerInvariant();
-
-            // Exclude Hildir unique quest dungeons or boss altars if desired? Actually Hildir crypts/caves are also real dungeons,
-            // while surface ruins/houses/wells/towers must NEVER be counted as dungeons!
-            if (low.StartsWith("crypt") ||              // Crypt2, Crypt3, Crypt4 (Burial Chambers)
-                low.StartsWith("trollcave") ||          // TrollCave02
-                low.StartsWith("sunkencrypt") ||        // SunkenCrypt4
-                low.StartsWith("mountaincave") ||       // MountainCave02 (Frost Caves)
-                low.StartsWith("mistlands_dvergrtown") || // Infested Mines
-                low.StartsWith("hildir_crypt") ||
-                low.StartsWith("hildir_cave") ||
-                low.StartsWith("morgencave") ||         // Ashlands Morgen Caves
-                low.StartsWith("charredtomb"))          // Ashlands Charred Tombs
-            {
-                return true;
-            }
-            return false;
+            return GetCanonicalDungeonTypeGroup(prefabName) != null;
         }
 
         private static string GetReadableDungeonShortLabel(string prefabName)
@@ -1457,7 +1768,10 @@ namespace CoarstalsEnemyOverhaul
                 return 0;
             }
 
+            EnsureWorldPerTypeCurseQuotaBuilt();
+
             int activePinned = 0;
+            int totalEligibleDungeons = 0;
             int cleansedSkipped = 0;
             Vector3 playerPos = Player.m_localPlayer != null ? Player.m_localPlayer.transform.position : Vector3.zero;
             float nearestDist = float.MaxValue;
@@ -1475,18 +1789,19 @@ namespace CoarstalsEnemyOverhaul
                     prefabName = inst.m_location.m_prefab.Name;
                 }
                 if (!IsEnterableDungeonLocationPrefab(prefabName)) continue;
+                totalEligibleDungeons++;
 
                 Vector2s zoneId = kv.Key;
                 string uniqueId = string.Format("dg_z_{0}_{1}", zoneId.x, zoneId.y);
 
-                if (IsDungeonCleansedGlobally(uniqueId))
+                if (!IsDungeonInExactTypeQuota(uniqueId))
                 {
-                    cleansedSkipped++;
                     continue;
                 }
 
-                if (!RollDeterministicCurseById(uniqueId))
+                if (IsDungeonCleansedGlobally(uniqueId))
                 {
+                    cleansedSkipped++;
                     continue;
                 }
 
@@ -1516,8 +1831,8 @@ namespace CoarstalsEnemyOverhaul
             if (activePinned > 0)
             {
                 statusMsg = string.Format(
-                    "Marked {0} active Cursed Dungeons on the map! (Cleansed: {1}). Nearest: {2} at ({3:F0}, {4:F0}) — {5:F0}m away!",
-                    activePinned, cleansedSkipped, nearestName, nearestPos.x, nearestPos.z, nearestDist);
+                    "Marked {0} active Cursed Dungeons out of {1} total world dungeons (~10% per dungeon type; Cleansed: {2}). Nearest: {3} at ({4:F0}, {5:F0}) — {6:F0}m away!",
+                    activePinned, totalEligibleDungeons, cleansedSkipped, nearestName, nearestPos.x, nearestPos.z, nearestDist);
             }
             else
             {
@@ -1563,6 +1878,10 @@ namespace CoarstalsEnemyOverhaul
         {
             if (!active)
             {
+                if (!s_lastFogActiveState) return;
+                s_lastFogActiveState = false;
+                s_lastFogBiome = Heightmap.Biome.None;
+
                 if (s_localCurseFogPs != null && s_localCurseFogPs.isPlaying)
                 {
                     s_localCurseFogPs.Stop(true, ParticleSystemStopBehavior.StopEmitting);
@@ -1573,6 +1892,13 @@ namespace CoarstalsEnemyOverhaul
                 }
                 return;
             }
+
+            if (s_lastFogActiveState && s_lastFogBiome == biome && s_localCurseFogRoot != null && s_localCurseFogRoot.activeSelf)
+            {
+                return;
+            }
+            s_lastFogActiveState = true;
+            s_lastFogBiome = biome;
 
             if (s_localCurseFogRoot == null)
             {

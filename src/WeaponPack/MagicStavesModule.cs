@@ -2389,6 +2389,15 @@ namespace NewDualAxesMod
             if (id == null || id.m_itemData == null || id.m_itemData.m_shared == null || id.m_itemData.m_shared.m_attack == null) return;
 
             Attack atk = id.m_itemData.m_shared.m_attack;
+
+            // CRITICAL: Donor `StaffFireball` has `m_attackRandomAnimations = 2` (which makes `Attack.Start` append `0` or `1`
+            // and trigger non-existent `"staff_shield0"` / `"staff_shield1"` in Player Animator!).
+            // Reset chain & random animation counts to 0 so `Attack.Start` triggers exact `"staff_shield"`!
+            atk.m_attackChainLevels = 0;
+            atk.m_attackRandomAnimations = 0;
+            atk.m_loopingAttack = false;
+            atk.m_chargeAnimationBool = "";
+
             GameObject shieldDonor = PrefabManager.Instance.GetPrefab("StaffShield");
             if (shieldDonor != null)
             {
@@ -2397,9 +2406,29 @@ namespace NewDualAxesMod
                 {
                     ItemDrop.ItemData.SharedData sShared = shieldId.m_itemData.m_shared;
                     id.m_itemData.m_shared.m_animationState = sShared.m_animationState;
-                    if (sShared.m_attack != null && !string.IsNullOrEmpty(sShared.m_attack.m_attackAnimation))
+                    if (sShared.m_attack != null)
                     {
-                        atk.m_attackAnimation = sShared.m_attack.m_attackAnimation;
+                        atk.m_attackAnimation = !string.IsNullOrEmpty(sShared.m_attack.m_attackAnimation)
+                            ? sShared.m_attack.m_attackAnimation
+                            : "staff_shield";
+                        atk.m_attackChainLevels = sShared.m_attack.m_attackChainLevels;
+                        atk.m_attackRandomAnimations = sShared.m_attack.m_attackRandomAnimations;
+                        if (sShared.m_attack.m_speedFactor > 0f)
+                        {
+                            atk.m_speedFactor = sShared.m_attack.m_speedFactor;
+                        }
+                        if (sShared.m_attack.m_speedFactorRotation > 0f)
+                        {
+                            atk.m_speedFactorRotation = sShared.m_attack.m_speedFactorRotation;
+                        }
+                        if (sShared.m_attack.m_startEffect != null && sShared.m_attack.m_startEffect.HasEffects())
+                        {
+                            atk.m_startEffect = sShared.m_attack.m_startEffect;
+                        }
+                        if (sShared.m_attack.m_triggerEffect != null && sShared.m_attack.m_triggerEffect.HasEffects())
+                        {
+                            atk.m_triggerEffect = sShared.m_attack.m_triggerEffect;
+                        }
                     }
                     else
                     {
@@ -2452,10 +2481,16 @@ namespace NewDualAxesMod
                 }
             }
 
-            // 3. Apply full heal (+25 / +35 / +45 / +55 HP)
+            // 3. Apply full heal (+25 / +35 / +45 / +55 HP) and show floating green heal number even if already at 100% HP
             if (healAmount > 0.01f)
             {
+                float hpBefore = target.GetHealth();
+                float maxHp = target.GetMaxHealth();
                 target.Heal(healAmount, true);
+                if (hpBefore >= maxHp - 0.1f && DamageText.instance != null)
+                {
+                    DamageText.instance.ShowText(DamageText.TextType.Heal, target.GetTopPoint(), healAmount, true);
+                }
             }
         }
 
@@ -2468,10 +2503,14 @@ namespace NewDualAxesMod
             float healAmount = GetPurificationHealForQuality(quality);
             Vector3 center = owner.transform.position;
 
+            SpawnImpactBurstLight(center + Vector3.up * 1.0f, new Color(0.25f, 1.0f, 0.55f, 1f), 9.0f, 2.6f, 0.45f);
+
             // Spawn networked emerald-gold expanding wave FX so all co-op players see the 10m ritual wave!
-            if (s_purificationWaveNetPrefab != null)
+            GameObject wavePrefab = (ZNetScene.instance != null ? ZNetScene.instance.GetPrefab("CWP_FX_PurificationWave") : null) ?? s_purificationWaveNetPrefab;
+            if (wavePrefab != null)
             {
-                GameObject waveGo = UnityEngine.Object.Instantiate(s_purificationWaveNetPrefab, center + Vector3.up * 0.12f, Quaternion.identity);
+                GameObject waveGo = UnityEngine.Object.Instantiate(wavePrefab, center + Vector3.up * 0.12f, Quaternion.identity);
+                if (!waveGo.activeSelf) waveGo.SetActive(true);
                 PurificationWaveVisual vis = waveGo.GetComponent<PurificationWaveVisual>();
                 if (vis != null)
                 {
