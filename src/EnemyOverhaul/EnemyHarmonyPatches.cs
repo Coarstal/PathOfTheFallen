@@ -1,0 +1,628 @@
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Reflection;
+using HarmonyLib;
+using TMPro;
+using UnityEngine;
+using Jotunn.Entities;
+using Jotunn.Managers;
+
+namespace CoarstalsEnemyOverhaul
+{
+    public static class EnemyHarmonyPatches
+    {
+        // ====================================================================
+        // 1. ZRoutedRpc Registration & Character Awake (Champion Component + Cleanse RPC)
+        // ====================================================================
+        [HarmonyPatch(typeof(Game), "Start")]
+        public static class Patch_Game_Start
+        {
+            public static void Postfix()
+            {
+                ChampionSystem.ResetSessionFlag();
+                CursedDungeonSystem.ResetSessionFlag();
+                if (ZRoutedRpc.instance != null)
+                {
+                    ChampionSystem.RegisterRPCs(ZRoutedRpc.instance);
+                    CursedDungeonSystem.RegisterRPCs(ZRoutedRpc.instance);
+                }
+            }
+        }
+
+        [HarmonyPatch(typeof(Character), "Awake")]
+        public static class Patch_Character_Awake
+        {
+            public static void Postfix(Character __instance)
+            {
+                if (__instance == null) return;
+                ZNetView nv = __instance.GetComponent<ZNetView>();
+                if (nv == null || !nv.IsValid()) return;
+
+                if (__instance.IsPlayer())
+                {
+                    nv.Register(EnemyInjuryManager.RPC_CleansePlayerInjuries, delegate (long sender)
+                    {
+                        EnemyInjuryManager.ClearAllInjuries(__instance);
+                    });
+                    return;
+                }
+
+                ZDO zdo = nv.GetZDO();
+                if (zdo != null && zdo.GetBool(ChampionSystem.ZdoIsChampion, false))
+                {
+                    __instance.m_boss = false;
+                    if (__instance.gameObject.GetComponent<ChampionBehaviour>() == null)
+                    {
+                        __instance.gameObject.AddComponent<ChampionBehaviour>();
+                    }
+                }
+            }
+        }
+
+        // Also ensure Character.IsBoss() returns true ONLY while inside BloodDominion projectile/cloud checks if needed,
+        // while keeping m_boss = false everywhere else so no top-screen Boss HUD ever shows!
+        // (Handled directly by our BloodDominion_RegisterMinion_Prefix hook!)
+
+        // ====================================================================
+        // 2. Player Update Tick (Cursed Dungeon Detection & Mystical Fog)
+        // ====================================================================
+        [HarmonyPatch(typeof(Player), "Update")]
+        public static class Patch_Player_Update
+        {
+            public static void Postfix(Player __instance)
+            {
+                if (__instance == null || __instance != Player.m_localPlayer) return;
+                CursedDungeonSystem.UpdateLocalPlayerDungeonTick(__instance, Time.deltaTime);
+            }
+        }
+
+        // ====================================================================
+        // 3. Combat Damage Pipeline:
+        //    - Champion & Cursed Dungeon Mob outgoing damage multipliers
+        //    - Champion stagger resistance (anti-stunlock)
+        //    - Block detection so ONLY unblocked/unparried hits inflict Injuries!
+        //    - Sundered Armor (-30% Total Armor) applied to Player.GetBodyArmor()
+        // ====================================================================
+        [HarmonyPatch(typeof(Player), "GetBodyArmor")]
+        public static class Patch_Player_GetBodyArmor
+        {
+            public static void Postfix(Player __instance, ref float __result)
+            {
+                if (__instance == null || __result <= 0f) return;
+                if (EnemyInjuryManager.HasInjury(__instance, InjuryType.ArmorSunder))
+                {
+                    float pen = Mathf.Clamp(EnemyOverhaulConfig.ArmorSunderPenalty.Value, 0f, 0.90f);
+                    __result *= (1f - pen);
+                }
+            }
+        }
+
+        [HarmonyPatch(typeof(Humanoid), "BlockAttack")]
+        public static class Patch_Humanoid_BlockAttack_Tracker
+        {
+            public static bool CurrentHitWasSuccessfullyBlocked;
+
+            public static void Postfix(Humanoid __instance, bool __result)
+            {
+                if (__instance != null && __instance == Player.m_localPlayer && __result)
+                {
+                    CurrentHitWasSuccessfullyBlocked = true;
+                }
+            }
+        }
+
+        [HarmonyPatch(typeof(Character), "RPC_Damage")]
+        public static class Patch_Character_RPC_Damage
+        {
+            public static void Prefix(Character __instance, HitData hit, out float __state)
+            {
+                __state = 0f;
+                Patch_Humanoid_BlockAttack_Tracker.CurrentHitWasSuccessfullyBlocked = false;
+                if (__instance == null || hit == null) return;
+
+                Character attacker = hit.GetAttacker();
+
+                // A) Outgoing damage scaling for Named Champions & Cursed Dungeon Mobs
+                if (attacker != null && !attacker.IsPlayer())
+                {
+                    if (ChampionSystem.IsChampion(attacker))
+                    {
+                        ChampionSystem.ApplyChampionElementalPerkDamage(attacker, ref hit);
+                    }
+                    else if (CursedDungeonSystem.IsCursedDungeonCreature(attacker))
+                    {
+                        float bonus = Mathf.Max(0f, EnemyOverhaulConfig.CursedDungeonMobDamageBonus.Value);
+                        if (bonus > 0f)
+                        {
+                            ChampionSystem.ScaleHitDamage(ref hit.m_damage, 1f + bonus);
+                        }
+                    }
+                }
+
+                // B) Champion Stagger Resistance (prevents infinite stunlock!)
+                if (!__instance.IsPlayer() && ChampionSystem.IsChampion(__instance))
+                {
+                    float stagRed = Mathf.Clamp(EnemyOverhaulConfig.ChampionStaggerResistance.Value, 0f, 0.95f);
+                    hit.m_staggerMultiplier *= (1f - stagRed);
+                }
+
+                // Record local player HP before damage so we know whether unblocked HP damage actually landed
+                if (__instance == Player.m_localPlayer && !__instance.IsDead())
+                {
+                    __state = __instance.GetHealth();
+                }
+            }
+
+            public static void Postfix(Character __instance, HitData hit, float __state)
+            {
+                try
+                {
+                    if (__instance == null || __instance != Player.m_localPlayer || __state <= 0f || hit == null) return;
+                    if (__instance.IsDead() || __instance.InDodge() || __instance.InGhostMode()) return;
+
+                    // If shield/weapon successfully blocked or parried the attack -> NO injury!
+                    if (Patch_Humanoid_BlockAttack_Tracker.CurrentHitWasSuccessfullyBlocked) return;
+
+                    float hpLost = __state - __instance.GetHealth();
+                    if (hpLost <= 0.5f) return;
+
+                    Character attacker = hit.GetAttacker();
+                    if (attacker != null && !attacker.IsPlayer())
+                    {
+                        EnemyInjuryManager.TryInflictFromEnemyHit((Player)__instance, attacker, hit);
+                    }
+                }
+                finally
+                {
+                    Patch_Humanoid_BlockAttack_Tracker.CurrentHitWasSuccessfullyBlocked = false;
+                }
+            }
+        }
+
+        // ====================================================================
+        // 4. Champion Berserk Fury (<40% HP: +25% move & attack animation speed)
+        // ====================================================================
+        [HarmonyPatch(typeof(Character), "GetJogSpeedFactor")]
+        public static class Patch_Character_GetJogSpeedFactor_ChampionFury
+        {
+            public static void Postfix(Character __instance, ref float __result)
+            {
+                if (__instance == null || __instance.IsPlayer()) return;
+                ChampionBehaviour champ = __instance.GetComponent<ChampionBehaviour>();
+                if (champ != null && champ.IsEnraged)
+                {
+                    __result *= 1.25f;
+                }
+            }
+        }
+
+        [HarmonyPatch(typeof(Character), "GetRunSpeedFactor")]
+        public static class Patch_Character_GetRunSpeedFactor_ChampionFury
+        {
+            public static void Postfix(Character __instance, ref float __result)
+            {
+                if (__instance == null || __instance.IsPlayer()) return;
+                ChampionBehaviour champ = __instance.GetComponent<ChampionBehaviour>();
+                if (champ != null && champ.IsEnraged)
+                {
+                    __result *= 1.25f;
+                }
+            }
+        }
+
+        [HarmonyPatch(typeof(CharacterAnimEvent), "CustomFixedUpdate")]
+        public static class Patch_CharacterAnimEvent_ChampionFury
+        {
+            private static readonly FieldInfo s_charField = typeof(CharacterAnimEvent).GetField("m_character", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+            private static readonly FieldInfo s_animField = typeof(CharacterAnimEvent).GetField("m_animator", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+
+            public static void Postfix(CharacterAnimEvent __instance)
+            {
+                if (__instance == null || s_charField == null || s_animField == null) return;
+                Character ch = s_charField.GetValue(__instance) as Character;
+                if (ch == null || ch.IsPlayer() || ch.IsDead()) return;
+
+                ChampionBehaviour champ = ch.GetComponent<ChampionBehaviour>();
+                if (champ == null || !champ.IsEnraged) return;
+
+                Animator anim = s_animField.GetValue(__instance) as Animator;
+                if (anim != null && anim.speed > 0.05f && anim.speed < 1.24f)
+                {
+                    anim.speed = 1.25f;
+                }
+            }
+        }
+
+        // ====================================================================
+        // 5. Eitr Burn (Manaburn) & Putrid Rot (-50% Healing) Hooks
+        // ====================================================================
+        [HarmonyPatch(typeof(Player), "UseEitr")]
+        public static class Patch_Player_UseEitr
+        {
+            public static void Postfix(Player __instance, float v)
+            {
+                if (__instance == null || __instance != Player.m_localPlayer || v <= 0.05f || __instance.IsDead()) return;
+                if (!EnemyInjuryManager.HasInjury(__instance, InjuryType.EitrBurn)) return;
+
+                float ratio = Mathf.Max(0f, EnemyOverhaulConfig.EitrBurnHealthDamagePerEitr.Value);
+                float burnHp = v * ratio;
+                if (burnHp > 0.1f)
+                {
+                    SE_InjuryBleeding.ApplyNonStaggeringBloodLoss(__instance, burnHp, new Color(0.85f, 0.30f, 1.0f, 1f));
+                }
+            }
+        }
+
+        [HarmonyPatch(typeof(Character), "Heal")]
+        public static class Patch_Character_Heal
+        {
+            public static void Prefix(Character __instance, ref float hp)
+            {
+                if (__instance == null || hp <= 0f || !__instance.IsPlayer()) return;
+                if (EnemyInjuryManager.HasInjury(__instance, InjuryType.Rot))
+                {
+                    float pen = Mathf.Clamp(EnemyOverhaulConfig.RotHealingPenalty.Value, 0f, 0.95f);
+                    hp *= (1f - pen);
+                }
+            }
+        }
+
+        // ====================================================================
+        // 6. Creature Death Hook:
+        //    - Track last player attacker per creature
+        //    - Increment server-wide species kill counter -> spawn Hunt Champion
+        //    - Drop Champion bonus trophies, x3 loot & Coins
+        //    - Unseal Cursed Dungeon when its Warden Champion dies!
+        // ====================================================================
+        [HarmonyPatch(typeof(Character), "Damage")]
+        public static class Patch_Character_Damage_LastPlayerTracker
+        {
+            private static readonly Dictionary<int, Player> s_lastPlayerAttacker = new Dictionary<int, Player>();
+
+            public static void Prefix(Character __instance, HitData hit)
+            {
+                if (__instance == null || __instance.IsPlayer() || hit == null) return;
+                Player atk = hit.GetAttacker() as Player;
+                if (atk != null)
+                {
+                    s_lastPlayerAttacker[__instance.GetInstanceID()] = atk;
+                }
+            }
+
+            public static Player ConsumeLastAttacker(Character victim)
+            {
+                if (victim == null) return null;
+                int id = victim.GetInstanceID();
+                Player p;
+                if (s_lastPlayerAttacker.TryGetValue(id, out p))
+                {
+                    s_lastPlayerAttacker.Remove(id);
+                    return p;
+                }
+                return null;
+            }
+        }
+
+        [HarmonyPatch(typeof(Character), "OnDeath")]
+        public static class Patch_Character_OnDeath
+        {
+            public static void Prefix(Character __instance)
+            {
+                if (__instance == null || __instance.IsPlayer()) return;
+
+                ZNetView nv = __instance.GetComponent<ZNetView>();
+                bool isOwner = (nv == null || !nv.IsValid() || nv.IsOwner());
+
+                // 1) If a Champion died: drop bonus Trophies + x3 Loot + Coins, and cleanse Cursed Dungeon if it was the Warden!
+                if (ChampionSystem.IsChampion(__instance))
+                {
+                    if (isOwner)
+                    {
+                        ChampionSystem.SpawnChampionBonusRewards(__instance);
+                        CursedDungeonSystem.NotifyDungeonWardenSlain(__instance);
+                    }
+                    return;
+                }
+
+                // 2) Regular creature killed -> attribute kill to the decisive player (or closest player in combat)
+                if (isOwner)
+                {
+                    Player killer = Patch_Character_Damage_LastPlayerTracker.ConsumeLastAttacker(__instance);
+                    if (killer == null)
+                    {
+                        killer = Player.GetClosestPlayer(__instance.transform.position, 40f);
+                    }
+                    if (killer != null)
+                    {
+                        ChampionSystem.NotifyCreatureKilledByPlayer(__instance, killer);
+                    }
+                }
+            }
+        }
+
+        // ====================================================================
+        // 7. Cursed Dungeon Sealed Exit Portal Hooks (`Teleport`)
+        //    - Blocks ONLY interior -> exterior exit while cursed!
+        //    - Exterior -> interior entry ALWAYS stays open for co-op & corpse runs!
+        // ====================================================================
+        [HarmonyPatch(typeof(Teleport), "Interact")]
+        public static class Patch_Teleport_Interact
+        {
+            public static bool Prefix(Teleport __instance, Humanoid character, bool hold, ref bool __result)
+            {
+                if (hold || __instance == null) return true;
+                if (CursedDungeonSystem.IsExitTeleportSealed(__instance, allowSpawnFallback: true))
+                {
+                    if (character != null)
+                    {
+                        character.Message(MessageHud.MessageType.Center, EnemyLocalization.Loc("$ceo_cursed_exit_locked"), 0, null);
+                    }
+                    __result = false;
+                    return false;
+                }
+                return true;
+            }
+        }
+
+        [HarmonyPatch(typeof(Teleport), "OnTriggerEnter")]
+        public static class Patch_Teleport_OnTriggerEnter
+        {
+            private static float s_lastMsgTime;
+
+            public static bool Prefix(Teleport __instance, Collider collider)
+            {
+                if (__instance == null || collider == null) return true;
+                Player p = collider.GetComponent<Player>();
+                if (p == null || p != Player.m_localPlayer) return true;
+
+                if (CursedDungeonSystem.IsExitTeleportSealed(__instance, allowSpawnFallback: true))
+                {
+                    if (Time.time - s_lastMsgTime > 2.0f)
+                    {
+                        s_lastMsgTime = Time.time;
+                        p.Message(MessageHud.MessageType.Center, EnemyLocalization.Loc("$ceo_cursed_exit_locked"), 0, null);
+                    }
+                    return false;
+                }
+                return true;
+            }
+        }
+
+        [HarmonyPatch(typeof(Teleport), "GetHoverText")]
+        public static class Patch_Teleport_GetHoverText
+        {
+            public static void Postfix(Teleport __instance, ref string __result)
+            {
+                if (__instance == null) return;
+                // Read-only hover check — NEVER trigger an early spawn on frame 1 while rooms are still loading!
+                if (CursedDungeonSystem.IsExitTeleportSealed(__instance, allowSpawnFallback: false))
+                {
+                    __result = EnemyLocalization.Loc("$ceo_cursed_exit_hover");
+                }
+            }
+        }
+
+        // ====================================================================
+        // 8. Overhead Enemy HUD Formatting for Champions & Cursed Mobs
+        // ====================================================================
+        [HarmonyPatch(typeof(EnemyHud), "UpdateHuds")]
+        public static class Patch_EnemyHud_UpdateHuds
+        {
+            private static readonly FieldInfo s_hudsField = typeof(EnemyHud).GetField("m_huds", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+            private static FieldInfo s_nameField;
+
+            public static void Postfix(EnemyHud __instance)
+            {
+                if (__instance == null || s_hudsField == null) return;
+                IDictionary dict = s_hudsField.GetValue(__instance) as IDictionary;
+                if (dict == null || dict.Count == 0) return;
+
+                foreach (DictionaryEntry entry in dict)
+                {
+                    Character ch = entry.Key as Character;
+                    if (ch == null || ch.IsPlayer() || entry.Value == null) continue;
+
+                    bool isChamp = ChampionSystem.IsChampion(ch);
+                    bool isCursedMob = !isChamp && CursedDungeonSystem.IsCursedDungeonCreature(ch);
+                    if (!isChamp && !isCursedMob) continue;
+
+                    if (s_nameField == null)
+                    {
+                        s_nameField = entry.Value.GetType().GetField("m_name", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                    }
+                    if (s_nameField == null) continue;
+
+                    TextMeshProUGUI nameTmp = s_nameField.GetValue(entry.Value) as TextMeshProUGUI;
+                    if (nameTmp == null) continue;
+
+                    string formatted;
+                    if (isChamp)
+                    {
+                        formatted = ChampionSystem.FormatChampionOverheadName(ch);
+                    }
+                    else
+                    {
+                        string baseName = ch.GetHoverName();
+                        formatted = string.Format("<color=#D46BFF>[{0}]</color> {1}", EnemyLocalization.Loc("$ceo_cursed_mob_tag"), baseName);
+                    }
+
+                    if (nameTmp.text != formatted)
+                    {
+                        nameTmp.richText = true;
+                        nameTmp.overflowMode = TextOverflowModes.Overflow;
+                        nameTmp.text = formatted;
+                    }
+                }
+            }
+        }
+
+        // ====================================================================
+        // 9. Admin Console Command (`enemyoverhaul` / `ceo`) for Instant Testing
+        // ====================================================================
+        public static void RegisterConsoleCommands()
+        {
+            CommandManager.Instance.AddConsoleCommand(new EnemyOverhaulConsoleCommand());
+        }
+    }
+
+    public class EnemyOverhaulConsoleCommand : ConsoleCommand
+    {
+        public override string Name
+        {
+            get { return "enemyoverhaul"; }
+        }
+
+        public override string Help
+        {
+            get
+            {
+                return "[champion [prefab] | injury <bleed|hamstring|sunder|winded|eitrburn|rot|all|clear> | cursedungeon | kills [prefab]] - Admin testing commands.";
+            }
+        }
+
+        public override bool IsCheat
+        {
+            get { return true; }
+        }
+
+        public override void Run(string[] args)
+        {
+            Player p = Player.m_localPlayer;
+            if (p == null)
+            {
+                Console.instance.Print("Enter a world first.");
+                return;
+            }
+
+            bool isAdmin = SynchronizationManager.Instance.PlayerIsAdmin || (ZNet.instance != null && ZNet.instance.IsServer());
+            if (!isAdmin)
+            {
+                Console.instance.Print("Only server administrators or singleplayer hosts can run enemyoverhaul.");
+                return;
+            }
+
+            if (args == null || args.Length == 0)
+            {
+                Console.instance.Print("Usage: enemyoverhaul [map [clear] | champion [prefab] | injury <bleed|hamstring|sunder|winded|eitrburn|rot|all|clear> | cursedungeon | uncurse | kills [prefab]]");
+                return;
+            }
+
+            string sub = args[0].Trim().ToLowerInvariant();
+            if (sub == "map" || sub == "showcursed" || sub == "cursedmap" || sub == "pins")
+            {
+                bool clearPins = args.Length >= 2 && (args[1].Equals("clear", StringComparison.OrdinalIgnoreCase) || args[1].Equals("hide", StringComparison.OrdinalIgnoreCase) || args[1].Equals("off", StringComparison.OrdinalIgnoreCase));
+                string mapMsg;
+                CursedDungeonSystem.ToggleOrShowAllCursedDungeonsOnMap(clearPins, out mapMsg);
+                Console.instance.Print("[EnemyOverhaul] " + mapMsg);
+                return;
+            }
+            if (sub == "champion" || sub == "champ")
+            {
+                string prefab = (args.Length >= 2 && !string.IsNullOrEmpty(args[1])) ? args[1] : "Greydwarf_Elite";
+                GameObject spawned = ChampionSystem.SpawnAmbushChampionNear(prefab, p.transform.position);
+                if (spawned != null)
+                {
+                    Console.instance.Print("[EnemyOverhaul] Ambush Champion (" + prefab + ") spawned nearby and is stalking you!");
+                }
+                else
+                {
+                    Console.instance.Print("[EnemyOverhaul] Could not spawn '" + prefab + "' (check prefab name or move away from PlayerBase).");
+                }
+                return;
+            }
+
+            if (sub == "injury" && args.Length >= 2)
+            {
+                string kind = args[1].Trim().ToLowerInvariant();
+                switch (kind)
+                {
+                    case "clear":
+                    case "cleanse":
+                        int n = EnemyInjuryManager.ClearAllInjuriesInRadius(p.transform.position, 15f);
+                        Console.instance.Print("[EnemyOverhaul] Cleansed all Combat Injuries in 15m radius (players cleansed: " + n + ").");
+                        break;
+                    case "all":
+                        EnemyInjuryManager.ApplyInjury(p, InjuryType.Bleeding);
+                        EnemyInjuryManager.ApplyInjury(p, InjuryType.Hamstrung);
+                        EnemyInjuryManager.ApplyInjury(p, InjuryType.ArmorSunder);
+                        EnemyInjuryManager.ApplyInjury(p, InjuryType.Winded);
+                        EnemyInjuryManager.ApplyInjury(p, InjuryType.EitrBurn);
+                        EnemyInjuryManager.ApplyInjury(p, InjuryType.Rot);
+                        Console.instance.Print("[EnemyOverhaul] Applied all 6 Combat Injuries!");
+                        break;
+                    case "bleed":
+                    case "bleeding":
+                        EnemyInjuryManager.ApplyInjury(p, InjuryType.Bleeding);
+                        Console.instance.Print("[EnemyOverhaul] Applied Bleeding (Рваная рана).");
+                        break;
+                    case "hamstring":
+                    case "hamstrung":
+                        EnemyInjuryManager.ApplyInjury(p, InjuryType.Hamstrung);
+                        Console.instance.Print("[EnemyOverhaul] Applied Hamstrung (Простреленное сухожилие).");
+                        break;
+                    case "sunder":
+                    case "armorsunder":
+                        EnemyInjuryManager.ApplyInjury(p, InjuryType.ArmorSunder);
+                        Console.instance.Print("[EnemyOverhaul] Applied Armor Sunder (Раскол брони).");
+                        break;
+                    case "winded":
+                        EnemyInjuryManager.ApplyInjury(p, InjuryType.Winded);
+                        Console.instance.Print("[EnemyOverhaul] Applied Winded (Выбитое дыхание).");
+                        break;
+                    case "eitrburn":
+                    case "manaburn":
+                        EnemyInjuryManager.ApplyInjury(p, InjuryType.EitrBurn);
+                        Console.instance.Print("[EnemyOverhaul] Applied Eitr Burn (Ожог Эйтра).");
+                        break;
+                    case "rot":
+                        EnemyInjuryManager.ApplyInjury(p, InjuryType.Rot);
+                        Console.instance.Print("[EnemyOverhaul] Applied Putrid Rot (Заражение).");
+                        break;
+                    default:
+                        Console.instance.Print("Unknown injury. Valid: bleed, hamstring, sunder, winded, eitrburn, rot, all, clear");
+                        break;
+                }
+                return;
+            }
+
+            if (sub == "cursedungeon" || sub == "curse")
+            {
+                string msg;
+                CursedDungeonSystem.ForceCurseNearestDungeonForTesting(p.transform.position, out msg);
+                Console.instance.Print("[EnemyOverhaul] " + msg);
+                return;
+            }
+
+            if (sub == "uncurse" || sub == "cleanse" || sub == "unseal")
+            {
+                string msg2;
+                CursedDungeonSystem.ForceCleanseNearestDungeonForAdmin(p.transform.position, out msg2);
+                Console.instance.Print("[EnemyOverhaul] " + msg2);
+                return;
+            }
+
+            if (sub == "debugdungeon" || sub == "status")
+            {
+                Console.instance.Print("[EnemyOverhaul] " + CursedDungeonSystem.GetCurrentDungeonDebugInfo(p.transform.position));
+                return;
+            }
+
+            if (sub == "kills")
+            {
+                if (args.Length >= 2)
+                {
+                    int c = ChampionSystem.GetServerSpeciesKillCount(args[1]);
+                    Console.instance.Print("[EnemyOverhaul] Current world kill streak for '" + args[1] + "': " + c);
+                }
+                else
+                {
+                    Console.instance.Print("Usage: enemyoverhaul kills <PrefabName> (e.g. Troll, Greydwarf, Draugr)");
+                }
+                return;
+            }
+
+            Console.instance.Print("Usage: enemyoverhaul [champion [prefab] | injury <bleed|hamstring|sunder|winded|eitrburn|rot|all|clear> | cursedungeon | kills [prefab]]");
+        }
+    }
+}

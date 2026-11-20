@@ -1,0 +1,19 @@
+# Build & temporary files
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.tmp
+*.log
+*.zip
+*.blend1
+*.dll
+!PathOfTheFallen.dll
+
+# Raw local screenshot workspace (processed images live in docs/images/)
+Screenshots/
+
+# Assistant config
+GEMINI.md
+gemini.md
