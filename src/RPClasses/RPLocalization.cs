@@ -35,7 +35,7 @@ namespace CoarstalsRPClasses
                 { "rp_lore_knight", "Sworn to stand unyielding behind steel plate. Gains immense armor when fully clad, though heavy plates slow every step and roll." },
                 { "rp_lore_thief", "Strikes unseen from the dark. Excels with daggers and deadly blows to the enemy's back, trading away armor and shield mastery." },
                 { "rp_lore_hunter", "Master of bowstring, crossbow bolt, and thrown spear. Deadly from afar, yet vulnerable when forced into heavy melee." },
-                { "rp_lore_sorcerer", "Born with an innate wellspring of Eitr flowing through fragile veins. Commands devastating staves at the cost of physical strength." },
+                { "rp_lore_sorcerer", "Born with an innate wellspring of Eitr in a fragile vessel. Channels the ancient blessing of the Forsaken stones and commands arcane staves at the cost of physical strength." },
                 { "rp_lore_beggar", "Possesses nothing save a broad back and scraps of every trade. Carries vast burdens with minor universal talents, yet learns slowly." },
 
                 // Passive Skills (All 6 Classes)
@@ -48,7 +48,7 @@ namespace CoarstalsRPClasses
                 { "rp_se_falcon_eye", "Falcon's Swiftness" },
                 { "rp_se_falcon_eye_lore", "Trained hands draw bowstrings and crank crossbows in the blink of an eye." },
                 { "rp_se_archmage", "Archmage" },
-                { "rp_se_archmage_lore", "Mastery of destructive sorcery amplifies spell strikes and lingering afflictions." },
+                { "rp_se_archmage_lore", "Deep attunement to the Forsaken stones prolongs their blessing and hastens the awakening of ancient power." },
                 { "rp_se_ineptitude", "Ineptitude" },
                 { "rp_se_ineptitude_lore", "Lack of formal training slows mastery of every discipline." },
 
@@ -104,6 +104,10 @@ namespace CoarstalsRPClasses
                 { "rp_stat_hunter_combo_val", "next shot x{0} damage" },
                 { "rp_stat_magic_dmg", "Magic Weapon Damage" },
                 { "rp_stat_status_dmg", "Status Effect Damage" },
+                { "rp_stat_gp_duration", "Forsaken Power Duration" },
+                { "rp_stat_gp_duration_val", "+{0}% ({1} min)" },
+                { "rp_stat_gp_cooldown", "Forsaken Power Cooldown" },
+                { "rp_stat_gp_cooldown_val", "-{0}% ({1} min)" },
                 { "rp_stat_phys_dmg", "Physical Weapon Damage" },
                 { "rp_stat_low_hp_dmg", "All Damage (below {0}% Player Health)" },
                 { "rp_stat_warrior_onslaught", "Bloody Onslaught" },
@@ -145,7 +149,7 @@ namespace CoarstalsRPClasses
                 { "rp_lore_knight", "Непоколебимый защитник, закованный в броню с головы до пят. Полный доспех делает его стеной стали ценой скорости и ловкости." },
                 { "rp_lore_thief", "Разит беззвучно из тени и заходит за спину врага. Смертоносен с клинками, но плохо держит прямой удар и блок щитом." },
                 { "rp_lore_hunter", "Виртуоз тетивы, арбалетного болта и метательного копья. Смертельно опасен на дистанции, но уязвим в тяжёлой рубке." },
-                { "rp_lore_sorcerer", "От рождения наделён источником Эйтра в хрупком теле. Повелевает разрушительной магией посохов в обмен на физическую силу." },
+                { "rp_lore_sorcerer", "От рождения наделён источником Эйтра в хрупком теле. Черпает древнюю мощь жертвенных камней Павших и повелевает посохами в обмен на физическую силу." },
                 { "rp_lore_beggar", "За душой ни гроша, зато широкая спина и крупицы чужих ремёсел. Уносит огромные грузы, но медленнее постигает науки." },
 
                 // Пассивные навыки всех 6 классов
@@ -158,7 +162,7 @@ namespace CoarstalsRPClasses
                 { "rp_se_falcon_eye", "Соколиная сноровка" },
                 { "rp_se_falcon_eye_lore", "Отточенные движения рук молниеносно натягивают тетиву и взводят арбалет." },
                 { "rp_se_archmage", "Архимаг" },
-                { "rp_se_archmage_lore", "Высшее мастерство разрушительных чар усиливает магию и накладываемые проклятия." },
+                { "rp_se_archmage_lore", "Духовная связь с камнями Павших продлевает их благословение и ускоряет пробуждение древней силы." },
                 { "rp_se_ineptitude", "Бездарность" },
                 { "rp_se_ineptitude_lore", "Отсутствие школы и дисциплины замедляет освоение любых навыков." },
 
@@ -214,6 +218,10 @@ namespace CoarstalsRPClasses
                 { "rp_stat_hunter_combo_val", "след. выстрел x{0} урона" },
                 { "rp_stat_magic_dmg", "Урон магическим оружием" },
                 { "rp_stat_status_dmg", "Урон статусом" },
+                { "rp_stat_gp_duration", "Длительность Силы Павших" },
+                { "rp_stat_gp_duration_val", "+{0}% ({1} мин.)" },
+                { "rp_stat_gp_cooldown", "Перезарядка Силы Павших" },
+                { "rp_stat_gp_cooldown_val", "-{0}% ({1} мин.)" },
                 { "rp_stat_phys_dmg", "Урон физическим оружием" },
                 { "rp_stat_low_hp_dmg", "Весь урон (при здоровье игрока ниже {0}%)" },
                 { "rp_stat_warrior_onslaught", "Кровавый натиск" },

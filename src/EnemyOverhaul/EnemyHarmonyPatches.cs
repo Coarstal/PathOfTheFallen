@@ -22,6 +22,7 @@ namespace CoarstalsEnemyOverhaul
             {
                 ChampionSystem.ResetSessionFlag();
                 CursedDungeonSystem.ResetSessionFlag();
+                ServerPingTracker.ResetSession();
                 if (ZRoutedRpc.instance != null)
                 {
                     ChampionSystem.RegisterRPCs(ZRoutedRpc.instance);
@@ -508,6 +509,318 @@ namespace CoarstalsEnemyOverhaul
         }
 
         // ====================================================================
+        // 8b. Minimap HUD Overlays:
+        //     • Bottom-Right: Hunt Champion Remaining Counter
+        //     • Top-Left: True Round-Trip Server Ping (ping: X ms)
+        //       Hooks ZRpc.UpdatePing / ZRpc.ReceivePing on the server peer RPC
+        //       so it works with ANY server version without custom RPC handlers!
+        // ====================================================================
+        internal static class ServerPingTracker
+        {
+            private static float s_pingSentRealtime = -1f;
+            private static float s_smoothedRttMs = -1f;
+            private static int s_displayPingMs;
+
+            public static void ResetSession()
+            {
+                s_pingSentRealtime = -1f;
+                s_smoothedRttMs = -1f;
+                s_displayPingMs = 0;
+            }
+
+            public static void OnSendingPing(ZRpc rpc)
+            {
+                if (rpc == null || ZNet.instance == null || ZNet.instance.IsServer()) return;
+                if (rpc != ZNet.instance.GetServerRPC()) return;
+
+                s_pingSentRealtime = Time.realtimeSinceStartup;
+            }
+
+            public static void OnReceivedPingReply(ZRpc rpc)
+            {
+                if (rpc == null || s_pingSentRealtime <= 0f) return;
+                if (ZNet.instance == null || ZNet.instance.IsServer()) return;
+                if (rpc != ZNet.instance.GetServerRPC()) return;
+
+                float rttMs = (Time.realtimeSinceStartup - s_pingSentRealtime) * 1000f;
+                s_pingSentRealtime = -1f;
+                if (rttMs <= 0f || rttMs > 9999f) return;
+
+                if (s_smoothedRttMs < 0f)
+                {
+                    s_smoothedRttMs = rttMs;
+                }
+                else
+                {
+                    s_smoothedRttMs = Mathf.Lerp(s_smoothedRttMs, rttMs, 0.35f);
+                }
+                s_displayPingMs = Mathf.Max(1, Mathf.RoundToInt(s_smoothedRttMs));
+            }
+
+            public static int GetPingMs()
+            {
+                ZNet znet = ZNet.instance;
+                if (znet == null || znet.IsServer()) return 0;
+
+                if (s_smoothedRttMs >= 0f)
+                {
+                    return s_displayPingMs;
+                }
+
+                float localQ, remoteQ, outB, inB;
+                int netPing;
+                znet.GetNetStats(out localQ, out remoteQ, out netPing, out outB, out inB);
+                return netPing > 0 ? netPing : 0;
+            }
+        }
+
+        [HarmonyPatch(typeof(ZRpc), "UpdatePing")]
+        public static class Patch_ZRpc_UpdatePing_MeasureStart
+        {
+            private static readonly FieldInfo s_pingTimerField = typeof(ZRpc).GetField("m_pingTimer", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+            private static readonly FieldInfo s_pingIntervalField = typeof(ZRpc).GetField("m_pingInterval", BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
+
+            public static void Prefix(ZRpc __instance, float dt)
+            {
+                if (__instance == null || s_pingTimerField == null || s_pingIntervalField == null) return;
+                if (ZNet.instance == null || ZNet.instance.IsServer() || __instance != ZNet.instance.GetServerRPC()) return;
+
+                float nextTimer = (float)s_pingTimerField.GetValue(__instance) + dt;
+                float interval = (float)s_pingIntervalField.GetValue(null);
+                if (nextTimer > interval)
+                {
+                    ServerPingTracker.OnSendingPing(__instance);
+                }
+            }
+        }
+
+        [HarmonyPatch(typeof(ZRpc), "ReceivePing")]
+        public static class Patch_ZRpc_ReceivePing_MeasureEnd
+        {
+            private static readonly FieldInfo s_timeSinceLastPingField = typeof(ZRpc).GetField("m_timeSinceLastPing", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+
+            public static void Postfix(ZRpc __instance)
+            {
+                if (__instance == null || s_timeSinceLastPingField == null) return;
+                if (ZNet.instance == null || ZNet.instance.IsServer() || __instance != ZNet.instance.GetServerRPC()) return;
+
+                // In ZRpc.ReceivePing: when package.ReadBool() == false (server's Pong reply), m_timeSinceLastPing is reset to 0f!
+                float sinceLast = (float)s_timeSinceLastPingField.GetValue(__instance);
+                if (sinceLast == 0f)
+                {
+                    ServerPingTracker.OnReceivedPingReply(__instance);
+                }
+            }
+        }
+
+        [HarmonyPatch(typeof(Game), "Logout")]
+        public static class Patch_Game_Logout_ResetPing
+        {
+            public static void Postfix()
+            {
+                ServerPingTracker.ResetSession();
+            }
+        }
+
+        [HarmonyPatch(typeof(Minimap), "Update")]
+        public static class Patch_Minimap_Update_ChampionCounter
+        {
+            private static GameObject s_counterObj;
+            private static TMP_Text s_counterTmp;
+            private static int s_lastShownRemaining = -9999;
+            private static bool s_lastWasRussian;
+
+            private static GameObject s_pingObj;
+            private static TMP_Text s_pingTmp;
+            private static int s_lastShownPing = -9999;
+            private static float s_nextPingPollTime;
+
+            public static void Postfix(Minimap __instance)
+            {
+                if (__instance == null || Player.m_localPlayer == null) return;
+
+                bool smallMapVisible = __instance.m_smallRoot != null && __instance.m_smallRoot.activeSelf;
+
+                UpdateChampionCounter(__instance, smallMapVisible);
+                UpdateServerPing(__instance, smallMapVisible);
+            }
+
+            private static void UpdateChampionCounter(Minimap mm, bool smallMapVisible)
+            {
+                bool shouldShow = smallMapVisible &&
+                                  EnemyOverhaulConfig.EnableChampions.Value &&
+                                  EnemyOverhaulConfig.ShowMinimapChampionCounter.Value;
+
+                if (!shouldShow)
+                {
+                    if (s_counterObj != null && s_counterObj.activeSelf)
+                    {
+                        s_counterObj.SetActive(false);
+                    }
+                    return;
+                }
+
+                EnsureMinimapCounterWidget(mm);
+                if (s_counterObj == null || s_counterTmp == null) return;
+
+                if (!s_counterObj.activeSelf)
+                {
+                    s_counterObj.SetActive(true);
+                }
+
+                int remaining = ChampionSystem.GetRemainingKillsForMinimap();
+                bool isRus = EnemyLocalization.IsRussian();
+                if (remaining != s_lastShownRemaining || isRus != s_lastWasRussian)
+                {
+                    s_lastShownRemaining = remaining;
+                    s_lastWasRussian = isRus;
+
+                    string numStr = (remaining <= 3)
+                        ? string.Format("<color=#FF785A><b>{0}</b></color>", remaining)
+                        : string.Format("<color=#FFF8E7><b>{0}</b></color>", remaining);
+
+                    s_counterTmp.text = string.Format(EnemyLocalization.Loc("$ceo_minimap_champ_left"), numStr);
+                }
+            }
+
+            private static void UpdateServerPing(Minimap mm, bool smallMapVisible)
+            {
+                bool shouldShow = smallMapVisible && EnemyOverhaulConfig.ShowMinimapPing.Value;
+                if (!shouldShow)
+                {
+                    if (s_pingObj != null && s_pingObj.activeSelf)
+                    {
+                        s_pingObj.SetActive(false);
+                    }
+                    return;
+                }
+
+                EnsureMinimapPingWidget(mm);
+                if (s_pingObj == null || s_pingTmp == null) return;
+
+                if (!s_pingObj.activeSelf)
+                {
+                    s_pingObj.SetActive(true);
+                }
+
+                float now = Time.unscaledTime;
+                if (now < s_nextPingPollTime && s_lastShownPing >= 0) return;
+                s_nextPingPollTime = now + 0.5f;
+
+                int pingMs = ReadServerPingMs();
+                if (pingMs != s_lastShownPing)
+                {
+                    s_lastShownPing = pingMs;
+
+                    string valColor;
+                    if (pingMs <= 80)
+                    {
+                        valColor = "#8CE884";
+                    }
+                    else if (pingMs <= 150)
+                    {
+                        valColor = "#FFD86B";
+                    }
+                    else
+                    {
+                        valColor = "#FF785A";
+                    }
+
+                    s_pingTmp.text = string.Format("ping: <color={0}><b>{1}</b></color>", valColor, pingMs);
+                }
+            }
+
+            private static int ReadServerPingMs()
+            {
+                return ServerPingTracker.GetPingMs();
+            }
+
+            private static void EnsureMinimapCounterWidget(Minimap mm)
+            {
+                if (s_counterObj != null) return;
+                if (mm.m_biomeNameSmall == null) return;
+
+                Transform mapParent = (mm.m_mapImageSmall != null)
+                    ? mm.m_mapImageSmall.transform
+                    : mm.m_smallRoot.transform;
+
+                s_counterObj = UnityEngine.Object.Instantiate(mm.m_biomeNameSmall.gameObject, mapParent);
+                s_counterObj.name = "CEO_MinimapChampionCounter";
+                s_counterObj.SetActive(true);
+
+                RectTransform rt = s_counterObj.GetComponent<RectTransform>();
+                if (rt != null)
+                {
+                    rt.localRotation = Quaternion.identity;
+                    rt.localScale = Vector3.one;
+                    rt.anchorMin = new Vector2(1f, 0f);
+                    rt.anchorMax = new Vector2(1f, 0f);
+                    rt.pivot = new Vector2(1f, 0f);
+                    rt.anchoredPosition = new Vector2(-6f, 4f);
+                    rt.sizeDelta = new Vector2(175f, 22f);
+                }
+
+                s_counterTmp = s_counterObj.GetComponent<TMP_Text>();
+                if (s_counterTmp != null)
+                {
+                    float baseSize = mm.m_biomeNameSmall.fontSize > 4f ? mm.m_biomeNameSmall.fontSize : 16f;
+                    s_counterTmp.enableAutoSizing = false;
+                    s_counterTmp.fontSize = Mathf.Clamp(Mathf.Round(baseSize * 0.78f), 11f, 13.5f);
+                    s_counterTmp.alignment = TextAlignmentOptions.BottomRight;
+                    s_counterTmp.textWrappingMode = TextWrappingModes.NoWrap;
+                    s_counterTmp.overflowMode = TextOverflowModes.Overflow;
+                    s_counterTmp.richText = true;
+                    s_counterTmp.raycastTarget = false;
+                    s_counterTmp.color = new Color(0.92f, 0.90f, 0.85f, 0.95f);
+                }
+
+                s_lastShownRemaining = -9999;
+            }
+
+            private static void EnsureMinimapPingWidget(Minimap mm)
+            {
+                if (s_pingObj != null) return;
+                if (mm.m_biomeNameSmall == null) return;
+
+                Transform mapParent = (mm.m_mapImageSmall != null)
+                    ? mm.m_mapImageSmall.transform
+                    : mm.m_smallRoot.transform;
+
+                s_pingObj = UnityEngine.Object.Instantiate(mm.m_biomeNameSmall.gameObject, mapParent);
+                s_pingObj.name = "CEO_MinimapServerPing";
+                s_pingObj.SetActive(true);
+
+                RectTransform rt = s_pingObj.GetComponent<RectTransform>();
+                if (rt != null)
+                {
+                    rt.localRotation = Quaternion.identity;
+                    rt.localScale = Vector3.one;
+                    rt.anchorMin = new Vector2(0f, 1f);
+                    rt.anchorMax = new Vector2(0f, 1f);
+                    rt.pivot = new Vector2(0f, 1f);
+                    rt.anchoredPosition = new Vector2(6f, -4f);
+                    rt.sizeDelta = new Vector2(140f, 22f);
+                }
+
+                s_pingTmp = s_pingObj.GetComponent<TMP_Text>();
+                if (s_pingTmp != null)
+                {
+                    float baseSize = mm.m_biomeNameSmall.fontSize > 4f ? mm.m_biomeNameSmall.fontSize : 16f;
+                    s_pingTmp.enableAutoSizing = false;
+                    s_pingTmp.fontSize = Mathf.Clamp(Mathf.Round(baseSize * 0.78f), 11f, 13.5f);
+                    s_pingTmp.alignment = TextAlignmentOptions.TopLeft;
+                    s_pingTmp.textWrappingMode = TextWrappingModes.NoWrap;
+                    s_pingTmp.overflowMode = TextOverflowModes.Overflow;
+                    s_pingTmp.richText = true;
+                    s_pingTmp.raycastTarget = false;
+                    s_pingTmp.color = new Color(0.92f, 0.90f, 0.85f, 0.95f);
+                }
+
+                s_lastShownPing = -9999;
+            }
+        }
+
+        // ====================================================================
         // 9. Admin Console Command (`enemyoverhaul` / `ceo`) for Instant Testing
         // ====================================================================
         public static void RegisterConsoleCommands()
@@ -666,6 +979,7 @@ namespace CoarstalsEnemyOverhaul
                     if (int.TryParse(args[1], out newVal))
                     {
                         ChampionSystem.SetServerGlobalKillCount(newVal, forcePersistToZoneSystem: true);
+                        ChampionSystem.BroadcastRemainingKillsFromServer();
                         Console.instance.Print("[EnemyOverhaul] Set global Hunt Champion kill counter to: " + newVal + " / " + ChampionSystem.GetCurrentTargetThreshold());
                         return;
                     }

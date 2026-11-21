@@ -99,8 +99,8 @@ namespace CoarstalsRPClasses
         public static ConfigEntry<float> SorcererBaseEitr;
         public static ConfigEntry<float> SorcererEitrRegenBonus;
         public static ConfigEntry<float> SorcererSkillXPBonus;
-        public static ConfigEntry<float> SorcererMagicDamageBonus;
-        public static ConfigEntry<float> SorcererStatusDamageBonus;
+        public static ConfigEntry<float> SorcererGuardianDurationBonus;
+        public static ConfigEntry<float> SorcererGuardianCooldownReduction;
         public static ConfigEntry<int> SorcererFreeCastEveryN;
         public static ConfigEntry<float> SorcererPhysicalWeaponPenalty;
         public static ConfigEntry<float> SorcererArmorPenalty;
@@ -423,16 +423,16 @@ namespace CoarstalsRPClasses
                 "SkillXPBonus",
                 0.25f,
                 new ConfigDescription("All skill experience gain bonus (0.25 = +25%).", null, adminAttr));
-            SorcererMagicDamageBonus = config.Bind(
+            SorcererGuardianDurationBonus = config.Bind(
                 "01. RP Classes - 5. Sorcerer",
-                "ArchmageMagicDamageBonus",
-                0.15f,
-                new ConfigDescription("Damage bonus with Elemental and Blood Magic weapons from 'Archmage' (0.15 = +15%).", null, adminAttr));
-            SorcererStatusDamageBonus = config.Bind(
+                "ArchmageForsakenDurationBonus",
+                0.50f,
+                new ConfigDescription("Forsaken Power buff duration bonus from 'Archmage' (0.50 = +50% duration -> 7.5 min instead of 5 min).", null, adminAttr));
+            SorcererGuardianCooldownReduction = config.Bind(
                 "01. RP Classes - 5. Sorcerer",
-                "ArchmageStatusDamageBonus",
-                0.10f,
-                new ConfigDescription("Status effect damage bonus (Burning, Poison, Spirit, Frost) from 'Archmage' (0.10 = +10%).", null, adminAttr));
+                "ArchmageForsakenCooldownReduction",
+                0.25f,
+                new ConfigDescription("Forsaken Power cooldown reduction from 'Archmage' (0.25 = -25% cooldown -> 15 min instead of 20 min).", null, adminAttr));
             SorcererFreeCastEveryN = config.Bind(
                 "01. RP Classes - 5. Sorcerer",
                 "ArchmageFreeEitrEveryNCasts",
@@ -718,14 +718,26 @@ namespace CoarstalsRPClasses
                     break;
 
                 case RPClassType.Sorcerer:
+                {
+                    float gpDurMin = 5f * (1f + Mathf.Max(0f, SorcererGuardianDurationBonus.Value));
+                    float gpCdMin = 20f * (1f - Mathf.Clamp(SorcererGuardianCooldownReduction.Value, 0f, 0.90f));
+                    string durMinStr = gpDurMin.ToString("0.#");
+                    string cdMinStr = gpCdMin.ToString("0.#");
+
                     AppendSectionHeader(sb, "#80E878", Loc("$rp_ui_bonuses"), false);
                     AppendGoodLine(sb, Loc("$rp_stat_base_eitr"), "+" + Mathf.RoundToInt(SorcererBaseEitr.Value));
                     AppendGoodLine(sb, Loc("$rp_stat_eitr_regen"), "+" + Pct(SorcererEitrRegenBonus.Value) + "%");
                     AppendGoodLine(sb, Loc("$rp_stat_skill_xp"), "+" + Pct(SorcererSkillXPBonus.Value) + "%");
 
                     AppendSectionHeader(sb, "#FFD278", passiveTitle + " — «" + Loc("$rp_se_archmage") + "»", true);
-                    AppendGoodLine(sb, Loc("$rp_stat_magic_dmg"), "+" + Pct(SorcererMagicDamageBonus.Value) + "%");
-                    AppendGoodLine(sb, Loc("$rp_stat_status_dmg"), "+" + Pct(SorcererStatusDamageBonus.Value) + "%");
+                    AppendGoodLine(
+                        sb,
+                        Loc("$rp_stat_gp_duration"),
+                        string.Format(Loc("$rp_stat_gp_duration_val"), Pct(SorcererGuardianDurationBonus.Value), durMinStr));
+                    AppendGoodLine(
+                        sb,
+                        Loc("$rp_stat_gp_cooldown"),
+                        string.Format(Loc("$rp_stat_gp_cooldown_val"), Pct(SorcererGuardianCooldownReduction.Value), cdMinStr));
                     AppendSpecialPassiveLine(
                         sb,
                         Loc("$rp_stat_sorcerer_echo"),
@@ -737,6 +749,7 @@ namespace CoarstalsRPClasses
                     AppendBadLine(sb, Loc("$rp_stat_carry_weight"), "-" + Mathf.RoundToInt(SorcererCarryWeightPenalty.Value));
                     AppendBadLine(sb, Loc("$rp_stat_heavy_armor_eitr"), "-" + Pct(SorcererHeavyArmorEitrPenalty.Value) + "%", false);
                     break;
+                }
 
                 case RPClassType.Beggar:
                     AppendSectionHeader(sb, "#80E878", Loc("$rp_ui_bonuses"), false);
@@ -833,10 +846,21 @@ namespace CoarstalsRPClasses
 
         public static string BuildArchmageTooltip()
         {
+            float gpDurMin = 5f * (1f + Mathf.Max(0f, SorcererGuardianDurationBonus.Value));
+            float gpCdMin = 20f * (1f - Mathf.Clamp(SorcererGuardianCooldownReduction.Value, 0f, 0.90f));
+            string durMinStr = gpDurMin.ToString("0.#");
+            string cdMinStr = gpCdMin.ToString("0.#");
+
             StringBuilder sb = new StringBuilder();
             sb.Append("<color=#D8C8A8><i>").Append(Loc("$rp_se_archmage_lore")).Append("</i></color>\n\n");
-            AppendGoodLine(sb, Loc("$rp_stat_magic_dmg"), "+" + Pct(SorcererMagicDamageBonus.Value) + "%");
-            AppendGoodLine(sb, Loc("$rp_stat_status_dmg"), "+" + Pct(SorcererStatusDamageBonus.Value) + "%");
+            AppendGoodLine(
+                sb,
+                Loc("$rp_stat_gp_duration"),
+                string.Format(Loc("$rp_stat_gp_duration_val"), Pct(SorcererGuardianDurationBonus.Value), durMinStr));
+            AppendGoodLine(
+                sb,
+                Loc("$rp_stat_gp_cooldown"),
+                string.Format(Loc("$rp_stat_gp_cooldown_val"), Pct(SorcererGuardianCooldownReduction.Value), cdMinStr));
             AppendSpecialPassiveLine(
                 sb,
                 Loc("$rp_stat_sorcerer_echo"),

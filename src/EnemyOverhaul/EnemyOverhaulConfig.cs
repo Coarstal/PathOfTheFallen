@@ -29,6 +29,8 @@ namespace CoarstalsEnemyOverhaul
         // 1. Named Hunt Champions (Система Вендетты — каждые ~250 мобов)
         // ====================================================================
         public static ConfigEntry<bool> EnableChampions;
+        public static ConfigEntry<bool> ShowMinimapChampionCounter;
+        public static ConfigEntry<bool> ShowMinimapPing;
         public static ConfigEntry<int> HuntChampionMinKills;
         public static ConfigEntry<int> HuntChampionMaxKills;
         public static ConfigEntry<float> ChampionHPMultiplier;
@@ -95,6 +97,18 @@ namespace CoarstalsEnemyOverhaul
                 "EnableChampions",
                 true,
                 new ConfigDescription("Enable the server-wide Hunt Champion ambush system (~every 25-35 slain enemies, spawning the last killed creature).", null, adminAttr));
+
+            ShowMinimapChampionCounter = config.Bind(
+                secChamp,
+                "ShowMinimapChampionCounter",
+                true,
+                new ConfigDescription("Display a small remaining-kills-until-Champion counter in the bottom-right corner of the minimap.", null, clientAttr));
+
+            ShowMinimapPing = config.Bind(
+                secChamp,
+                "ShowMinimapPing",
+                true,
+                new ConfigDescription("Display server ping (ping: X ms) in the top-left corner of the minimap.", null, clientAttr));
 
             HuntChampionMinKills = config.Bind(
                 secChamp,

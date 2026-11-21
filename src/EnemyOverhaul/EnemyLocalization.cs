@@ -62,6 +62,7 @@ namespace CoarstalsEnemyOverhaul
                 { "ceo_champ_tag", "CHAMPION" },
                 { "ceo_dungeon_warden_tag", "CURSED WARDEN" },
                 { "ceo_cursed_mob_tag", "Cursed" },
+                { "ceo_minimap_champ_left", "Champion: {0}" },
 
                 // Cursed Dungeons
                 { "ceo_cursed_enter_banner", "<color=#D44CFF>CURSED DUNGEON!</color>\n<size=78%>The exit is sealed by dark mist until the Dungeon Champion falls!</size>" },
@@ -106,6 +107,7 @@ namespace CoarstalsEnemyOverhaul
                 { "ceo_champ_tag", "ЧЕМПИОН" },
                 { "ceo_dungeon_warden_tag", "СТРАЖ ПРОКЛЯТИЯ" },
                 { "ceo_cursed_mob_tag", "Проклятый" },
+                { "ceo_minimap_champ_left", "До чемпиона: {0}" },
 
                 // Проклятые Данжи
                 { "ceo_cursed_enter_banner", "<color=#D44CFF>ПРОКЛЯТОЕ ПОДЗЕМЕЛЬЕ!</color>\n<size=78%>Выход запечатан мглой, пока жив Чемпион этого данжа!</size>" },

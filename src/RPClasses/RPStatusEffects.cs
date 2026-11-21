@@ -665,7 +665,7 @@ namespace CoarstalsRPClasses
     }
 
     // ========================================================================
-    // 5. SORCERER PASSIVE: "Архимаг" (+15% Magic Weapon Damage, +10% Status Damage)
+    // 5. SORCERER PASSIVE: "Архимаг" (+50% Forsaken Power duration, -25% Forsaken Power cooldown, every 5th cast free)
     // ========================================================================
     public class SE_RPArchmage : StatusEffect, IRPPassiveSkillEffect
     {
@@ -679,14 +679,6 @@ namespace CoarstalsRPClasses
         public override string GetTooltipString()
         {
             return RPClassConfig.BuildArchmageTooltip();
-        }
-
-        public override void ModifyAttack(Skills.SkillType skill, ref HitData hitData)
-        {
-            if (SE_RPClass.IsMagicSkill(skill))
-            {
-                SE_RPClass.ScaleCombatDamageOnly(ref hitData.m_damage, 1f + RPClassConfig.SorcererMagicDamageBonus.Value);
-            }
         }
     }
 

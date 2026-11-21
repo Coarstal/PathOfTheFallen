@@ -180,18 +180,15 @@ namespace CoarstalsRPClasses
         }
 
         // ====================================================================
-        // 3. POSITIONAL BACKSTAB IN COMBAT (THIEF +35%)
-        //    & ARCHMAGE STATUS DAMAGE (+10%)
+        // 3. POSITIONAL BACKSTAB IN COMBAT (THIEF +35%),
+        //    KNIGHT PARRY RIPOSTE (+30%), WARRIOR FULL-HP STRIKE (+25%)
         //    & INITIAL CLASS SELECTION INVULNERABILITY
         // ====================================================================
         [HarmonyPatch(typeof(Character), "RPC_Damage")]
         public static class Patch_Character_RPC_Damage
         {
-            public static float ActiveArchmageStatusMult = 1f;
-
             public static bool Prefix(Character __instance, HitData hit)
             {
-                ActiveArchmageStatusMult = 1f;
                 if (__instance == null || hit == null) return true;
 
                 // Protect newly spawned classless player while reading and choosing their initial class!
@@ -209,12 +206,6 @@ namespace CoarstalsRPClasses
                 if (attackerPlayer != null && __instance != attackerPlayer)
                 {
                     RPClassType atkClass = RPPlayerClassManager.GetPlayerClass(attackerPlayer);
-
-                    // Sorcerer "Archmage": +10% Status Effect damage (Burning, Poison, Spirit, Frost)
-                    if (atkClass == RPClassType.Sorcerer)
-                    {
-                        ActiveArchmageStatusMult = 1f + RPClassConfig.SorcererStatusDamageBonus.Value;
-                    }
 
                     // Knight: +30% damage against parried / staggered enemies!
                     if (atkClass == RPClassType.Knight && !__instance.IsPlayer() && __instance.IsStaggering())
@@ -277,11 +268,6 @@ namespace CoarstalsRPClasses
 
                 return true;
             }
-
-            public static void Finalizer()
-            {
-                ActiveArchmageStatusMult = 1f;
-            }
         }
 
         // Warrior "Bloody Onslaught": register melee hits & boost melee attack animation speed per stack!
@@ -343,43 +329,49 @@ namespace CoarstalsRPClasses
             }
         }
 
-        [HarmonyPatch(typeof(Character), "AddFireDamage")]
-        public static class Patch_Character_AddFireDamage
+        // ====================================================================
+        // 3b. SORCERER "ARCHMAGE": FORSAKEN POWER MASTERY
+        //     • +50% Forsaken Power duration (7.5 min instead of 5 min)
+        //     • -25% Forsaken Power cooldown (15 min instead of 20 min)
+        // ====================================================================
+        [HarmonyPatch(typeof(Player), "ActivateGuardianPower")]
+        public static class Patch_Player_ActivateGuardianPower_Sorcerer
         {
-            public static void Prefix(ref float damage)
+            public static void Postfix(Player __instance, bool __result)
             {
-                if (Patch_Character_RPC_Damage.ActiveArchmageStatusMult != 1f)
-                    damage *= Patch_Character_RPC_Damage.ActiveArchmageStatusMult;
+                if (!__result || __instance == null) return;
+                if (RPPlayerClassManager.GetPlayerClass(__instance) != RPClassType.Sorcerer) return;
+
+                float cdReduction = Mathf.Clamp(RPClassConfig.SorcererGuardianCooldownReduction.Value, 0f, 0.90f);
+                if (__instance.m_guardianPowerCooldown > 0f && cdReduction > 0f)
+                {
+                    __instance.m_guardianPowerCooldown *= (1f - cdReduction);
+                }
             }
         }
 
-        [HarmonyPatch(typeof(Character), "AddPoisonDamage")]
-        public static class Patch_Character_AddPoisonDamage
+        [HarmonyPatch(typeof(SEMan), "AddStatusEffect", new Type[] { typeof(StatusEffect), typeof(bool), typeof(int), typeof(float), typeof(short) })]
+        public static class Patch_SEMan_AddStatusEffect_SorcererGuardianDuration
         {
-            public static void Prefix(ref float damage)
+            public static void Postfix(Character ___m_character, StatusEffect statusEffect, ref StatusEffect __result)
             {
-                if (Patch_Character_RPC_Damage.ActiveArchmageStatusMult != 1f)
-                    damage *= Patch_Character_RPC_Damage.ActiveArchmageStatusMult;
-            }
-        }
+                if (__result == null || statusEffect == null || ___m_character == null) return;
+                Player p = ___m_character as Player;
+                if (p == null || RPPlayerClassManager.GetPlayerClass(p) != RPClassType.Sorcerer) return;
 
-        [HarmonyPatch(typeof(Character), "AddSpiritDamage")]
-        public static class Patch_Character_AddSpiritDamage
-        {
-            public static void Prefix(ref float damage)
-            {
-                if (Patch_Character_RPC_Damage.ActiveArchmageStatusMult != 1f)
-                    damage *= Patch_Character_RPC_Damage.ActiveArchmageStatusMult;
-            }
-        }
+                string seName = statusEffect.name;
+                if (string.IsNullOrEmpty(seName)) return;
 
-        [HarmonyPatch(typeof(Character), "AddFrostDamage")]
-        public static class Patch_Character_AddFrostDamage
-        {
-            public static void Prefix(ref float damage)
-            {
-                if (Patch_Character_RPC_Damage.ActiveArchmageStatusMult != 1f)
-                    damage *= Patch_Character_RPC_Damage.ActiveArchmageStatusMult;
+                // All Forsaken / Guardian Powers in Valheim start with "GP_" (GP_Eikthyr, GP_TheElder, GP_Bonemass, GP_Moder, GP_Yagluth, GP_Queen, GP_Fader...)
+                // or have m_cooldown >= 600f (20 min boss power cooldown).
+                bool isGuardianPower = seName.StartsWith("GP_", StringComparison.OrdinalIgnoreCase) || statusEffect.m_cooldown >= 600f;
+                if (!isGuardianPower) return;
+
+                float durBonus = Mathf.Max(0f, RPClassConfig.SorcererGuardianDurationBonus.Value);
+                if (durBonus > 0f && statusEffect.m_ttl > 0f)
+                {
+                    __result.m_ttl = statusEffect.m_ttl * (1f + durBonus);
+                }
             }
         }
 
@@ -1055,6 +1047,11 @@ namespace CoarstalsRPClasses
             private static readonly FieldInfo s_adrenalineBarRootField = typeof(Hud).GetField("m_adrenalineBarRoot", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
             private static readonly FieldInfo s_foodIconField = typeof(Hud).GetField("m_foodIcon", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
             private static readonly FieldInfo s_healthTextField = typeof(Hud).GetField("m_healthText", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+            private static readonly FieldInfo s_gpRootField = typeof(Hud).GetField("m_gpRoot", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+
+            private static RectTransform s_trackedGpRoot;
+            private static Vector2 s_gpOrigAnchoredPos;
+            private const float GuardianPowerLiftPixels = 32f;
 
             private static GameObject s_armorWidgetObj;
             private static RectTransform s_armorWidgetRt;
@@ -1082,9 +1079,11 @@ namespace CoarstalsRPClasses
                 {
                     if (s_armorWidgetObj != null && s_armorWidgetObj.activeSelf) s_armorWidgetObj.SetActive(false);
                     if (s_stackWidgetObj != null && s_stackWidgetObj.activeSelf) s_stackWidgetObj.SetActive(false);
+                    UpdateGuardianPowerVerticalOffset(__instance, lift: false);
                     return;
                 }
 
+                UpdateGuardianPowerVerticalOffset(__instance, lift: true);
                 EnsureArmorWidget(__instance);
                 if (s_armorWidgetObj == null || s_armorValueTmp == null || s_armorWidgetRt == null) return;
 
@@ -1304,6 +1303,28 @@ namespace CoarstalsRPClasses
                 if (s_stackWidgetRt != null)
                 {
                     s_stackWidgetRt.localPosition = new Vector3(cur.x + 42f, s_baseY, 0f);
+                }
+            }
+
+            private static void UpdateGuardianPowerVerticalOffset(Hud hud, bool lift)
+            {
+                if (hud == null || s_gpRootField == null) return;
+                RectTransform gpRt = s_gpRootField.GetValue(hud) as RectTransform;
+                if (gpRt == null) return;
+
+                if (s_trackedGpRoot != gpRt)
+                {
+                    s_trackedGpRoot = gpRt;
+                    s_gpOrigAnchoredPos = gpRt.anchoredPosition;
+                }
+
+                Vector2 desired = lift
+                    ? new Vector2(s_gpOrigAnchoredPos.x, s_gpOrigAnchoredPos.y + GuardianPowerLiftPixels)
+                    : s_gpOrigAnchoredPos;
+
+                if ((gpRt.anchoredPosition - desired).sqrMagnitude > 0.01f)
+                {
+                    gpRt.anchoredPosition = desired;
                 }
             }
 

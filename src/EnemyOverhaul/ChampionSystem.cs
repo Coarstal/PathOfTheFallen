@@ -242,10 +242,19 @@ namespace CoarstalsEnemyOverhaul
         public const string ZdoChampPackUsed = "CEO_PackUsed";
 
         public const string RPC_ReportKillToServer = "CEO_RPC_ReportKill";
+        public const string RPC_ClientSpawnAmbush = "CEO_RPC_SpawnAmbush";
+        public const string RPC_ConfirmAmbushResult = "CEO_RPC_AmbushResult";
+        public const string RPC_SyncRemainingKills = "CEO_RPC_SyncRem";
+        public const string RPC_RequestRemainingKills = "CEO_RPC_ReqRem";
         private const string GlobalHuntKillsKeyPrefix = "ceo_huntkills_";
 
         private static int s_serverHuntKills = -1;
         private static int s_serverTargetThreshold = -1;
+        private static int s_clientSyncedRemaining = -1;
+        private static float s_nextClientSyncReqTime;
+        private static bool s_ambushPending;
+        private static float s_ambushPendingUntil;
+        private static readonly MethodInfo s_aiSetTargetMethod = typeof(MonsterAI).GetMethod("SetTarget", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, new Type[] { typeof(Character) }, null);
 
         private static readonly HashSet<string> s_largeSpecies = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -339,6 +348,10 @@ namespace CoarstalsEnemyOverhaul
         {
             if (routedRpc == null || s_rpcRegistered) return;
             routedRpc.Register<string, Vector3, long>(RPC_ReportKillToServer, OnServerReceivedSpeciesKill);
+            routedRpc.Register<string>(RPC_ClientSpawnAmbush, OnClientSpawnAmbushRequested);
+            routedRpc.Register<bool>(RPC_ConfirmAmbushResult, OnServerConfirmAmbushResult);
+            routedRpc.Register<int>(RPC_SyncRemainingKills, OnClientReceivedRemainingKills);
+            routedRpc.Register(RPC_RequestRemainingKills, OnServerReceivedRemainingRequest);
             s_rpcRegistered = true;
         }
 
@@ -350,6 +363,10 @@ namespace CoarstalsEnemyOverhaul
             s_rpcRegistered = false;
             s_serverHuntKills = -1;
             s_serverTargetThreshold = -1;
+            s_clientSyncedRemaining = -1;
+            s_nextClientSyncReqTime = 0f;
+            s_ambushPending = false;
+            s_ambushPendingUntil = 0f;
             s_championCache.Clear();
         }
 
@@ -423,7 +440,7 @@ namespace CoarstalsEnemyOverhaul
 
             if (ZNet.instance != null && ZNet.instance.IsServer())
             {
-                ProcessSpeciesKillOnServer(prefabName, killer.transform.position, killer.GetPlayerID());
+                ProcessSpeciesKillOnServer(0L, prefabName, killer.transform.position, killer.GetPlayerID());
             }
             else if (ZRoutedRpc.instance != null && ZNet.instance != null)
             {
@@ -443,7 +460,7 @@ namespace CoarstalsEnemyOverhaul
         private static void OnServerReceivedSpeciesKill(long senderPeer, string prefabName, Vector3 killerPos, long killerPlayerId)
         {
             if (ZNet.instance == null || !ZNet.instance.IsServer()) return;
-            ProcessSpeciesKillOnServer(prefabName, killerPos, killerPlayerId);
+            ProcessSpeciesKillOnServer(senderPeer, prefabName, killerPos, killerPlayerId);
         }
 
         private static int RollNextChampionKillThreshold()
@@ -462,41 +479,174 @@ namespace CoarstalsEnemyOverhaul
             return s_serverTargetThreshold;
         }
 
-        private static void ProcessSpeciesKillOnServer(string prefabName, Vector3 killerPos, long killerPlayerId)
+        public static void BroadcastRemainingKillsFromServer()
+        {
+            if (ZNet.instance == null || !ZNet.instance.IsServer()) return;
+            int rem = Mathf.Max(1, GetCurrentTargetThreshold() - GetServerGlobalKillCount());
+            s_clientSyncedRemaining = rem;
+            if (ZRoutedRpc.instance != null)
+            {
+                ZRoutedRpc.instance.InvokeRoutedRPC(ZRoutedRpc.Everybody, RPC_SyncRemainingKills, rem);
+            }
+        }
+
+        private static void OnClientReceivedRemainingKills(long senderPeer, int remaining)
+        {
+            s_clientSyncedRemaining = Mathf.Max(1, remaining);
+        }
+
+        private static void OnServerReceivedRemainingRequest(long senderPeer)
+        {
+            if (ZNet.instance == null || !ZNet.instance.IsServer() || ZRoutedRpc.instance == null || senderPeer == 0L) return;
+            int rem = Mathf.Max(1, GetCurrentTargetThreshold() - GetServerGlobalKillCount());
+            ZRoutedRpc.instance.InvokeRoutedRPC(senderPeer, RPC_SyncRemainingKills, rem);
+        }
+
+        public static int GetRemainingKillsForMinimap()
+        {
+            if (ZNet.instance == null || ZNet.instance.IsServer())
+            {
+                return Mathf.Max(1, GetCurrentTargetThreshold() - GetServerGlobalKillCount());
+            }
+
+            if (s_clientSyncedRemaining > 0)
+            {
+                return s_clientSyncedRemaining;
+            }
+
+            if (Time.time >= s_nextClientSyncReqTime && ZRoutedRpc.instance != null)
+            {
+                s_nextClientSyncReqTime = Time.time + 3.0f;
+                ZNetPeer serverPeer = ZNet.instance.GetServerPeer();
+                if (serverPeer != null)
+                {
+                    ZRoutedRpc.instance.InvokeRoutedRPC(serverPeer.m_uid, RPC_RequestRemainingKills);
+                }
+            }
+
+            int approxMid = (EnemyOverhaulConfig.HuntChampionMinKills.Value + EnemyOverhaulConfig.HuntChampionMaxKills.Value) / 2;
+            return Mathf.Max(1, approxMid - GetServerGlobalKillCount());
+        }
+
+        private static void ProcessSpeciesKillOnServer(long senderPeer, string prefabName, Vector3 killerPos, long killerPlayerId)
         {
             if (!EnemyOverhaulConfig.EnableChampions.Value || ZoneSystem.instance == null) return;
+
+            if (s_ambushPending && Time.time < s_ambushPendingUntil)
+            {
+                return;
+            }
+            s_ambushPending = false;
 
             int currentKills = GetServerGlobalKillCount() + 1;
             int targetKills = GetCurrentTargetThreshold();
 
             if (currentKills >= targetKills)
             {
-                // Spawn the exact creature species that was killed last!
-                SetServerGlobalKillCount(0, forcePersistToZoneSystem: true);
-                s_serverTargetThreshold = RollNextChampionKillThreshold();
-                SpawnAmbushChampionNear(prefabName, killerPos);
+                bool isLocalHostPlayer = (ZNet.instance != null && !ZNet.instance.IsDedicated() &&
+                                          Player.m_localPlayer != null && senderPeer == 0L);
+
+                if (isLocalHostPlayer)
+                {
+                    // Singleplayer or listen-server host killing near themselves (terrain physics ARE loaded locally)
+                    GameObject spawned = SpawnAmbushChampionNear(prefabName, killerPos);
+                    if (spawned != null)
+                    {
+                        SetServerGlobalKillCount(0, forcePersistToZoneSystem: true);
+                        s_serverTargetThreshold = RollNextChampionKillThreshold();
+                        BroadcastRemainingKillsFromServer();
+                    }
+                    else
+                    {
+                        // Blocked by PlayerBase / deep water -> DO NOT reset counter to 0! Retry on the very next valid kill!
+                        SetServerGlobalKillCount(targetKills - 1, forcePersistToZoneSystem: false);
+                        BroadcastRemainingKillsFromServer();
+                    }
+                }
+                else if (ZRoutedRpc.instance != null && senderPeer != 0L)
+                {
+                    // Dedicated Server or remote co-op client: delegate physical ground raycast & ZNet instantiation
+                    // to `senderPeer` (where terrain/dungeon colliders are actually loaded!), and wait for confirmation!
+                    s_ambushPending = true;
+                    s_ambushPendingUntil = Time.time + 5.0f;
+                    SetServerGlobalKillCount(targetKills - 1, forcePersistToZoneSystem: false);
+                    BroadcastRemainingKillsFromServer();
+                    ZRoutedRpc.instance.InvokeRoutedRPC(senderPeer, RPC_ClientSpawnAmbush, prefabName);
+                }
             }
             else
             {
                 // Persist checkpoint to ZoneSystem only every 10 kills to avoid network GlobalKey broadcasts on every single kill!
                 bool checkpoint = (currentKills % 10 == 0);
                 SetServerGlobalKillCount(currentKills, forcePersistToZoneSystem: checkpoint);
+                BroadcastRemainingKillsFromServer();
+            }
+        }
+
+        private static void OnClientSpawnAmbushRequested(long senderPeer, string prefabName)
+        {
+            bool ok = false;
+            try
+            {
+                Player local = Player.m_localPlayer;
+                if (local != null && !local.IsDead() && !local.IsTeleporting())
+                {
+                    GameObject spawned = SpawnAmbushChampionNear(prefabName, local.transform.position);
+                    ok = (spawned != null);
+                }
+            }
+            catch (Exception ex)
+            {
+                if (CoarstalsEnemyOverhaulPlugin.ModLogger != null)
+                {
+                    CoarstalsEnemyOverhaulPlugin.ModLogger.LogWarning("[EnemyOverhaul] Client ambush spawn error: " + ex.Message);
+                }
+            }
+
+            if (ZRoutedRpc.instance != null && senderPeer != 0L)
+            {
+                ZRoutedRpc.instance.InvokeRoutedRPC(senderPeer, RPC_ConfirmAmbushResult, ok);
+            }
+        }
+
+        private static void OnServerConfirmAmbushResult(long senderPeer, bool spawned)
+        {
+            if (ZNet.instance == null || !ZNet.instance.IsServer()) return;
+            s_ambushPending = false;
+
+            if (spawned)
+            {
+                SetServerGlobalKillCount(0, forcePersistToZoneSystem: true);
+                s_serverTargetThreshold = RollNextChampionKillThreshold();
+                BroadcastRemainingKillsFromServer();
+                if (CoarstalsEnemyOverhaulPlugin.ModLogger != null)
+                {
+                    CoarstalsEnemyOverhaulPlugin.ModLogger.LogInfo("[EnemyOverhaul] Confirmed Hunt Champion ambush spawned on client peer " + senderPeer + "; counter reset to 0.");
+                }
+            }
+            else
+            {
+                // Client was inside PlayerBase / water / teleporting -> keep counter armed at `target - 1` so next outdoor kill spawns it!
+                int armed = Mathf.Max(0, GetCurrentTargetThreshold() - 1);
+                SetServerGlobalKillCount(armed, forcePersistToZoneSystem: false);
+                BroadcastRemainingKillsFromServer();
             }
         }
 
         public static int GetServerGlobalKillCount()
         {
-            if (s_serverHuntKills >= 0)
+            bool isServer = (ZNet.instance == null || ZNet.instance.IsServer());
+            if (isServer && s_serverHuntKills >= 0)
             {
                 return s_serverHuntKills;
             }
 
-            s_serverHuntKills = 0;
-            if (ZoneSystem.instance == null) return 0;
+            if (ZoneSystem.instance == null) return Mathf.Max(0, s_serverHuntKills);
 
             List<string> keys = ZoneSystem.instance.GetGlobalKeys();
             if (keys == null) return 0;
 
+            int found = 0;
             for (int i = 0; i < keys.Count; i++)
             {
                 string k = keys[i];
@@ -505,12 +655,17 @@ namespace CoarstalsEnemyOverhaul
                     int val;
                     if (int.TryParse(k.Substring(GlobalHuntKillsKeyPrefix.Length), out val))
                     {
-                        s_serverHuntKills = Mathf.Max(0, val);
-                        return s_serverHuntKills;
+                        found = Mathf.Max(0, val);
+                        break;
                     }
                 }
             }
-            return 0;
+
+            if (isServer)
+            {
+                s_serverHuntKills = found;
+            }
+            return found;
         }
 
         public static void SetServerGlobalKillCount(int newCount, bool forcePersistToZoneSystem = true)
@@ -570,7 +725,7 @@ namespace CoarstalsEnemyOverhaul
             }
             else
             {
-                if (!TryFindOutdoorAmbushPoint(targetPos, 30f, 45f, out spawnPos))
+                if (!TryFindOutdoorAmbushPoint(targetPos, 20f, 32f, out spawnPos))
                 {
                     return null;
                 }
@@ -584,13 +739,18 @@ namespace CoarstalsEnemyOverhaul
             GameObject instance = UnityEngine.Object.Instantiate(prefab, spawnPos, rot);
             ImbueAsChampion(instance, biome, isDungeonWarden: false, wardenDungeonId: string.Empty);
 
-            // Command AI to actively stalk & hunt the player immediately!
+            // Command AI to actively lock onto & hunt the nearest player immediately!
             MonsterAI ai = instance.GetComponent<MonsterAI>();
             if (ai != null)
             {
                 ai.SetHuntPlayer(true);
                 ai.SetPatrolPoint();
                 ai.Alert();
+                Player huntedPlayer = Player.GetClosestPlayer(spawnPos, 65f);
+                if (huntedPlayer != null && s_aiSetTargetMethod != null)
+                {
+                    s_aiSetTargetMethod.Invoke(ai, new object[] { huntedPlayer });
+                }
             }
 
             if (CoarstalsEnemyOverhaulPlugin.ModLogger != null)
@@ -919,7 +1079,18 @@ namespace CoarstalsEnemyOverhaul
         {
             result = Vector3.zero;
             DungeonGenerator nearestDg = CursedDungeonSystem.FindOwningDungeonGeneratorForPoint(playerPos);
-            if (nearestDg == null) return false;
+            if (nearestDg == null)
+            {
+                // Static 1-room cave (e.g. TrollCave / BearCave) without DungeonGenerator: use interior floor resolver
+                CursedDungeonSystem.DungeonAnchor staticAnchor;
+                string unusedSample;
+                if (CursedDungeonSystem.TryResolveDungeonAt(playerPos, out staticAnchor) &&
+                    CursedDungeonSystem.TryFindGuaranteedFloorInsideDungeon(staticAnchor, out result, out unusedSample))
+                {
+                    return true;
+                }
+                return false;
+            }
 
             int solidMask = LayerMask.GetMask("Default", "static_solid", "piece", "terrain");
 

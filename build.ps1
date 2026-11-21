@@ -102,6 +102,7 @@ if ($LASTEXITCODE -eq 0) {
     Get-ChildItem -Filter "PathOfTheFallen-*.zip" -File | Where-Object { $_.Name -ne "PathOfTheFallen-$modVer.zip" } | Remove-Item -Force
 
     $zipFiles = @("PathOfTheFallen.dll", "manifest.json", "icon.png", "README.md")
+    if (Test-Path "CHANGELOG.md") { $zipFiles += "CHANGELOG.md" }
     Compress-Archive -Path $zipFiles -DestinationPath "PathOfTheFallen-$modVer.zip" -CompressionLevel Optimal -Force
     Copy-Item -Force "PathOfTheFallen-$modVer.zip" "PathOfTheFallen.zip"
     Write-Host "Created Thunderstore archives: PathOfTheFallen-$modVer.zip & PathOfTheFallen.zip ($((Get-Item PathOfTheFallen.zip).Length) bytes)"
