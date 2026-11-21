@@ -45,6 +45,7 @@ namespace CoarstalsEnemyOverhaul
         // 2. Combat Injuries (6 Боевых Травм)
         // ====================================================================
         public static ConfigEntry<bool> EnableInjuries;
+        public static ConfigEntry<float> InjuryMinHealthLost;
         public static ConfigEntry<float> InjuryChanceZeroStar;
         public static ConfigEntry<float> InjuryChanceOneStarOrCursed;
         public static ConfigEntry<float> InjuryChanceTwoStarOrChampion;
@@ -93,19 +94,19 @@ namespace CoarstalsEnemyOverhaul
                 secChamp,
                 "EnableChampions",
                 true,
-                new ConfigDescription("Enable the server-wide Hunt Champion ambush system (~every 225-275 slain enemies).", null, adminAttr));
+                new ConfigDescription("Enable the server-wide Hunt Champion ambush system (~every 25-35 slain enemies, spawning the last killed creature).", null, adminAttr));
 
             HuntChampionMinKills = config.Bind(
                 secChamp,
-                "HuntChampionMinKills",
-                225,
-                new ConfigDescription("Minimum global hostile mob kills before a Named Hunt Champion ambushes (~250 +/- 25 -> 225).", null, adminAttr));
+                "HuntChampionMinKillsV2",
+                25,
+                new ConfigDescription("Minimum global hostile mob kills across all species before a Named Hunt Champion ambushes (~25-35).", null, adminAttr));
 
             HuntChampionMaxKills = config.Bind(
                 secChamp,
-                "HuntChampionMaxKills",
-                275,
-                new ConfigDescription("Maximum global hostile mob kills before a Named Hunt Champion is guaranteed to ambush (~250 +/- 25 -> 275).", null, adminAttr));
+                "HuntChampionMaxKillsV2",
+                35,
+                new ConfigDescription("Maximum global hostile mob kills across all species before a Named Hunt Champion is guaranteed to ambush (~25-35).", null, adminAttr));
 
             ChampionHPMultiplier = config.Bind(
                 secChamp,
@@ -167,6 +168,12 @@ namespace CoarstalsEnemyOverhaul
                 "EnableInjuries",
                 true,
                 new ConfigDescription("Enable the 6 tactical combat injury debuffs inflicted by unparried/unblocked enemy hits.", null, adminAttr));
+
+            InjuryMinHealthLost = config.Bind(
+                secInj,
+                "MinHealthDamageForInjury",
+                7.5f,
+                new ConfigDescription("Minimum unblocked health lost from a single hit required to trigger any Combat Injury debuff (default 7.5 HP).", null, adminAttr));
 
             InjuryChanceZeroStar = config.Bind(
                 secInj,

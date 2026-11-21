@@ -184,7 +184,8 @@ namespace CoarstalsEnemyOverhaul
                     if (Patch_Humanoid_BlockAttack_Tracker.CurrentHitWasSuccessfullyBlocked) return;
 
                     float hpLost = __state - __instance.GetHealth();
-                    if (hpLost <= 0.5f) return;
+                    float minHpThreshold = Mathf.Max(0.1f, EnemyOverhaulConfig.InjuryMinHealthLost.Value);
+                    if (hpLost < minHpThreshold) return;
 
                     Character attacker = hit.GetAttacker();
                     if (attacker != null && !attacker.IsPlayer())

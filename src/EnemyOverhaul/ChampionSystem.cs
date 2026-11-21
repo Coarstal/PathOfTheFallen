@@ -250,6 +250,8 @@ namespace CoarstalsEnemyOverhaul
         private static readonly HashSet<string> s_largeSpecies = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "Troll",
+            "Bjorn",
+            "Unbjorn",
             "Abomination",
             "StoneGolem",
             "Fenring",
@@ -292,6 +294,8 @@ namespace CoarstalsEnemyOverhaul
             { "Greydwarf_Elite", "TrophyGreydwarfBrute" },
             { "Greydwarf_Shaman", "TrophyGreydwarfShaman" },
             { "Troll", "TrophyForestTroll" },
+            { "Bjorn", "TrophyBjorn" },
+            { "Unbjorn", "TrophyBjornUndead" },
             { "Skeleton", "TrophySkeleton" },
             { "Skeleton_Poison", "TrophySkeletonPoison" },
             { "Ghost", "TrophySkeleton" },
@@ -458,19 +462,6 @@ namespace CoarstalsEnemyOverhaul
             return s_serverTargetThreshold;
         }
 
-        private static string UpgradeTinyDungeonCritterForChampion(string prefabName, Vector3 pos)
-        {
-            // If the 250th kill happens to be a tiny 10-HP Cave Bat (`Bat`), promote the ambush species to a real Frost Cave predator!
-            if (string.Equals(prefabName, "Bat", StringComparison.OrdinalIgnoreCase))
-            {
-                if (ZNetScene.instance != null && ZNetScene.instance.GetPrefab("Ulv") != null)
-                {
-                    return "Ulv";
-                }
-            }
-            return prefabName;
-        }
-
         private static void ProcessSpeciesKillOnServer(string prefabName, Vector3 killerPos, long killerPlayerId)
         {
             if (!EnemyOverhaulConfig.EnableChampions.Value || ZoneSystem.instance == null) return;
@@ -480,15 +471,15 @@ namespace CoarstalsEnemyOverhaul
 
             if (currentKills >= targetKills)
             {
-                string champSpecies = UpgradeTinyDungeonCritterForChampion(prefabName, killerPos);
+                // Spawn the exact creature species that was killed last!
                 SetServerGlobalKillCount(0, forcePersistToZoneSystem: true);
                 s_serverTargetThreshold = RollNextChampionKillThreshold();
-                SpawnAmbushChampionNear(champSpecies, killerPos);
+                SpawnAmbushChampionNear(prefabName, killerPos);
             }
             else
             {
-                // Persist checkpoint to ZoneSystem only every 25 kills to avoid network GlobalKey broadcasts on every single kill in dungeons!
-                bool checkpoint = (currentKills % 25 == 0);
+                // Persist checkpoint to ZoneSystem only every 10 kills to avoid network GlobalKey broadcasts on every single kill!
+                bool checkpoint = (currentKills % 10 == 0);
                 SetServerGlobalKillCount(currentKills, forcePersistToZoneSystem: checkpoint);
             }
         }

@@ -20,7 +20,7 @@ namespace FinalMod
     {
         public const string PluginGUID = "com.coarstal.pathofthefallen";
         public const string PluginName = "Valheim - Path of the Fallen";
-        public const string PluginVersion = "1.0.2";
+        public const string PluginVersion = "1.0.3";
 
         internal static ManualLogSource ModLogger;
         private Harmony m_harmony;

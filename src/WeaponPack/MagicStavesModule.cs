@@ -173,15 +173,15 @@ namespace NewDualAxesMod
                 0.55f,
                 new ConfigDescription("Chance (0.0 - 1.0) for each abandoned Meadows chest to contain 1-2 Whispering Wind Staff relic parts.", null, adminAttr)
             );
-            MeadowsSlashDamage = config.Bind(secMeadows, "SlashDamage", 35f, new ConfigDescription("Base Wind Blade Slash damage at level 1.", null, adminAttr));
-            MeadowsSlashPerLevel = config.Bind(secMeadows, "SlashDamagePerLevel", 7f, new ConfigDescription("Extra Slash damage per staff upgrade level.", null, adminAttr));
+            MeadowsSlashDamage = config.Bind(secMeadows, "SlashDamageV2", 25f, new ConfigDescription("Base Wind Blade Slash damage at level 1 (25 Slash).", null, adminAttr));
+            MeadowsSlashPerLevel = config.Bind(secMeadows, "SlashDamagePerLevelV2", 15f, new ConfigDescription("Extra Slash damage per staff upgrade level (+15 Slash per level via Forge of Potential).", null, adminAttr));
             MeadowsKnockbackForce = config.Bind(secMeadows, "KnockbackForce", 100f, new ConfigDescription("Exact Wind Blade knockback force (100).", null, adminAttr));
             MeadowsEitrCost = config.Bind(secMeadows, "EitrCost", 18f, new ConfigDescription("Eitr cost per Wind Blade cast.", null, adminAttr));
             MeadowsUpgradeRecipe = config.Bind(
                 secMeadows,
-                "Recipe",
-                "PartWindCrystal:1:0,PartCarvedHandle:1:0,PartRunicBinding:1:0,Flint:0:6,DeerHide:0:4,Resin:0:8",
-                new ConfigDescription("Workbench recipe (Prefab:CraftAmount:UpgradePerLevel).", null, adminAttr)
+                "RecipeV2",
+                "PartWindCrystal:1:0,PartCarvedHandle:1:0,PartRunicBinding:1:0",
+                new ConfigDescription("Workbench assembly recipe (upgrades are performed exclusively at the Forge of Potential).", null, adminAttr)
             );
 
             BlackForestEitrCost = config.Bind(secBF, "EitrCost", 50f, new ConfigDescription("Eitr cost per Purification cast (default 50 Eitr, 0% HP cost).", null, adminAttr));

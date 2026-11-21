@@ -28,7 +28,7 @@ namespace CoarstalsEnemyOverhaul
         public const string ZdoDungeonState = "CEO_CurseState";
         public const string ZdoDungeonRuleVersion = "CEO_CurseVer";
         public const string ZdoDungeonAdminForced = "CEO_AdminCurse";
-        public const int CurrentCurseRuleVersion = 2;
+        public const int CurrentCurseRuleVersion = 3;
         public const string ZdoDungeonWardenSpawned = "CEO_WardenSpawned";
         public const string ZdoDungeonBiome = "CEO_DungBiome";
         public const string ZdoCursedMobApplied = "CEO_CursedMob";
@@ -440,29 +440,71 @@ namespace CoarstalsEnemyOverhaul
             return ZoneSystem.instance.GetGlobalKey(GlobalKeyCleansedPrefix + dungeonId);
         }
 
+        private static bool IsExcludedTrollOrBearCaveAnchor(DungeonAnchor anchor)
+        {
+            string n = "";
+            if (anchor.Generator != null) n += anchor.Generator.gameObject.name.ToLowerInvariant() + " ";
+            if (anchor.ParentLocation != null) n += anchor.ParentLocation.gameObject.name.ToLowerInvariant() + " ";
+            if (anchor.InteriorRoot != null) n += anchor.InteriorRoot.name.ToLowerInvariant();
+
+            return n.Contains("trollcave") ||
+                   n.Contains("bearcave") ||
+                   n.Contains("bjorn") ||
+                   n.Contains("forestcave");
+        }
+
         public static int GetOrInitDungeonCurseState(DungeonAnchor anchor)
         {
             if (!anchor.IsValid || !EnemyOverhaulConfig.EnableCursedDungeons.Value) return StateNormal;
 
+            ZNetView nv = GetAnchorNetView(anchor);
+            bool adminForced = nv != null && nv.IsValid() && nv.GetZDO() != null && nv.GetZDO().GetBool(ZdoDungeonAdminForced, false);
+
+            // Troll Caves & Bear Caves are strictly excluded from Cursed Dungeons!
+            if (!adminForced && IsExcludedTrollOrBearCaveAnchor(anchor))
+            {
+                if (nv != null && nv.IsValid() && nv.IsOwner() && nv.GetZDO() != null)
+                {
+                    ZDO exZdo = nv.GetZDO();
+                    if (exZdo.GetInt(ZdoDungeonState, StateUnrolled) == StateCursedActive)
+                    {
+                        exZdo.Set(ZdoDungeonState, StateNormal);
+                        exZdo.Set(ZdoDungeonRuleVersion, CurrentCurseRuleVersion);
+                        if (ZNetScene.instance != null)
+                        {
+                            Character stale = FindLiveWardenInDungeon(anchor);
+                            if (stale != null)
+                            {
+                                ZNetView wNv = stale.GetComponent<ZNetView>();
+                                if (wNv != null && wNv.IsValid() && wNv.IsOwner())
+                                {
+                                    ZNetScene.instance.Destroy(stale.gameObject);
+                                }
+                                s_cachedLiveWarden = null;
+                            }
+                        }
+                    }
+                }
+                return StateNormal;
+            }
+
             if (IsDungeonCleansedGlobally(anchor.UniqueId))
             {
-                ZNetView cNv = GetAnchorNetView(anchor);
-                if (cNv != null && cNv.IsValid() && cNv.IsOwner() && cNv.GetZDO() != null)
+                if (nv != null && nv.IsValid() && nv.IsOwner() && nv.GetZDO() != null)
                 {
-                    if (cNv.GetZDO().GetInt(ZdoDungeonState, StateUnrolled) != StateCursedCleansed)
+                    if (nv.GetZDO().GetInt(ZdoDungeonState, StateUnrolled) != StateCursedCleansed)
                     {
-                        cNv.GetZDO().Set(ZdoDungeonState, StateCursedCleansed);
-                        cNv.GetZDO().Set(ZdoDungeonRuleVersion, CurrentCurseRuleVersion);
+                        nv.GetZDO().Set(ZdoDungeonState, StateCursedCleansed);
+                        nv.GetZDO().Set(ZdoDungeonRuleVersion, CurrentCurseRuleVersion);
                     }
                 }
                 return StateCursedCleansed;
             }
 
-            ZNetView nv = GetAnchorNetView(anchor);
             if (nv != null && nv.IsValid() && nv.GetZDO() != null)
             {
                 ZDO zdo = nv.GetZDO();
-                if (zdo.GetBool(ZdoDungeonAdminForced, false))
+                if (adminForced)
                 {
                     int forcedState = zdo.GetInt(ZdoDungeonState, StateCursedActive);
                     return forcedState == StateCursedCleansed ? StateCursedCleansed : StateCursedActive;
@@ -554,10 +596,10 @@ namespace CoarstalsEnemyOverhaul
             if (string.IsNullOrEmpty(prefabName)) return null;
             string low = prefabName.ToLowerInvariant();
 
-            // Never auto-curse Hildir's 3 unique 1-per-world quest locations
+            // Never auto-curse Hildir's unique quest dungeons OR Troll / Bear caves!
             if (low.StartsWith("hildir_")) return null;
+            if (low.Contains("trollcave") || low.Contains("bearcave") || low.Contains("bjorn") || low.Contains("forestcave")) return null;
 
-            if (low.StartsWith("trollcave")) return "TrollCave";
             if (low.StartsWith("crypt")) return "BurialChamber";
             if (low.StartsWith("sunkencrypt")) return "SunkenCrypt";
             if (low.StartsWith("mountaincave")) return "FrostCave";
@@ -1011,7 +1053,8 @@ namespace CoarstalsEnemyOverhaul
 
                     if (isSingleBossLair)
                     {
-                        if (existingLiveWarden == null && candidateToPromote == null && cNv.IsOwner())
+                        string candPrefab = Utils.GetPrefabName(ch.gameObject);
+                        if (existingLiveWarden == null && candidateToPromote == null && cNv.IsOwner() && !IsTrollOrBearCreaturePrefab(candPrefab))
                         {
                             candidateToPromote = ch;
                         }
@@ -1480,18 +1523,16 @@ namespace CoarstalsEnemyOverhaul
             return true;
         }
 
+        private static bool IsTrollOrBearCreaturePrefab(string prefabName)
+        {
+            if (string.IsNullOrEmpty(prefabName)) return false;
+            string low = prefabName.ToLowerInvariant();
+            return low.Contains("troll") || low.Contains("bjorn") || low.Contains("bear");
+        }
+
         private static string PickEliteWardenPrefabForAnchor(DungeonAnchor anchor, Heightmap.Biome biome, string spawnerSample)
         {
-            string dgName = anchor.Generator != null ? anchor.Generator.gameObject.name.ToLowerInvariant() : "";
-            string locName = anchor.ParentLocation != null ? anchor.ParentLocation.gameObject.name.ToLowerInvariant() : "";
-            string rootName = anchor.InteriorRoot != null ? anchor.InteriorRoot.name.ToLowerInvariant() : "";
-
-            // Only actual Black Forest Troll Caves (`TrollCave02`) get a Troll Warden — NEVER `DG_Cave` (Mountain Frost Caves)!
-            if (dgName.Contains("trollcave") || locName.Contains("trollcave") || rootName.Contains("trollcave"))
-            {
-                return "Troll";
-            }
-
+            // Never pick Troll or Bear (`Bjorn` / `Unbjorn`) as a Cursed Dungeon Warden!
             switch (biome)
             {
                 case Heightmap.Biome.BlackForest:
@@ -1507,7 +1548,7 @@ namespace CoarstalsEnemyOverhaul
                 case Heightmap.Biome.AshLands:
                     return "Morgen";
                 default:
-                    return !string.IsNullOrEmpty(spawnerSample) ? spawnerSample : "Skeleton";
+                    return (!string.IsNullOrEmpty(spawnerSample) && !IsTrollOrBearCreaturePrefab(spawnerSample)) ? spawnerSample : "Skeleton";
             }
         }
 

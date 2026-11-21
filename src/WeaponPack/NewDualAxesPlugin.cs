@@ -2794,6 +2794,35 @@ namespace NewDualAxesMod
     }
 
     /// <summary>
+    /// Blocks upgrading the 1st Meadows Staff (`StaffMeadows`) at a regular Workbench (`!station.m_upgrader`),
+    /// while keeping initial Craft (`item == null`) & Repair at the Workbench AND allowing full upgrades (`+15` Slash/lvl)
+    /// exclusively at the Forge of Potential (`station.m_upgrader == true`)!
+    /// </summary>
+    [HarmonyPatch(typeof(InventoryGui), "AddRecipeToList")]
+    public static class InventoryGui_AddRecipeToList_MeadowsUpgraderOnly_Patch
+    {
+        private static bool Prefix(Player player, Recipe recipe, ItemDrop.ItemData item)
+        {
+            if (item == null || recipe == null || recipe.m_item == null ||
+                recipe.m_item.m_itemData == null || recipe.m_item.m_itemData.m_shared == null)
+            {
+                return true;
+            }
+
+            if (recipe.m_item.m_itemData.m_shared.m_name == "$item_staff_meadows")
+            {
+                CraftingStation station = (player != null) ? player.GetCurrentCraftingStation() : null;
+                if (station == null || !station.m_upgrader)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+    }
+
+    /// <summary>
     /// Fixes vanilla Valheim 1.0's recipe-discovery quirk where standing near a Workbench/Forge (`currentStation != null`)
     /// during `UpdateKnownRecipesList` (`discover == true`) checks `m_upgraderResource` Battle Idols before unlocking the base recipe.
     /// </summary>

@@ -170,9 +170,9 @@ namespace NewDualAxesMod
             SadAuferMinCauldronLevel = config.Bind(secAufer, "MinCauldronLevel", 3, new ConfigDescription("Minimum Cauldron level required.", null, adminAttr));
             SadAuferRecipe = config.Bind(
                 secAufer,
-                "Recipe",
-                "CookedWolfMeat:2,DragonTear:2",
-                new ConfigDescription("Cauldron recipe (Prefab:Amount comma-separated).", null, adminAttr)
+                "RecipeV2",
+                "CookedWolfMeat:2,FreezeGland:2",
+                new ConfigDescription("Cauldron recipe (Prefab:Amount comma-separated; FreezeGland = Drake Freeze Gland / Морозная железа).", null, adminAttr)
             );
 
             // 6) Plains Shaman Tart
@@ -203,7 +203,7 @@ namespace NewDualAxesMod
                 { "item_food_necrosoup", "Necromancer's Brew" },
                 { "item_food_necrosoup_desc", "A bubbling bog-cauldron stew of withered bone, glowing thistle buds, entrails, and toxic ooze that awakens dark Eitr." },
                 { "item_food_sadaufer", "Story of the Sad Aufer" },
-                { "item_food_sadaufer_desc", "A sculpted figurine of a sorrowful sitting wolf molded from roasted wolf meat, weeping glowing blue dragon tears onto an ashwood plate." },
+                { "item_food_sadaufer_desc", "A sculpted figurine of a sorrowful sitting wolf molded from roasted wolf meat, glazed with icy drake freeze-gland essence onto an ashwood plate." },
                 { "item_food_plainstart", "Plains Shaman Tart" },
                 { "item_food_plainstart_desc", "A crisp barley-flour tart filled with golden cloudberry jam and crowned with two crossed emerald Deathsquito stingers." }
             });
@@ -216,7 +216,7 @@ namespace NewDualAxesMod
                 { "item_food_necrosoup", "Похлёбка некроманта" },
                 { "item_food_necrosoup_desc", "Густое варево из засохших костей, потрохов, болотной жижи и светящегося чертополоха, пробуждающее тёмный поток эйтра." },
                 { "item_food_sadaufer", "История грустного ауфера" },
-                { "item_food_sadaufer_desc", "Трогательное блюдо на деревянной тарелке: фигурка сидящего грустного волка из запечённого мяса, плачущего ледяными слезами дракона." },
+                { "item_food_sadaufer_desc", "Трогательное блюдо на деревянной тарелке: фигурка сидящего грустного волка из запечённого мяса, омытая ледяной эссенцией морозной железы дрейка." },
                 { "item_food_plainstart", "Тарт Шамана Равнин" },
                 { "item_food_plainstart_desc", "Хрустящая корзиночка из ячменной муки с густым морошковым джемом, украшенная двумя скрещёнными зелёными жалами комара смерти." }
             });

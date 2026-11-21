@@ -45,7 +45,7 @@ No more waiting until Mistlands to play a mage, healer, or dual-wielding berserk
   <img src="https://raw.githubusercontent.com/Coarstal/PathOfTheFallen/main/docs/images/02_Magic_Staves.jpg" width="880" alt="5 Lore-Friendly Magic Staves" />
 </p>
 
-1. **Staff of Whispering Wind** (`StaffMeadows`, *Meadows — Elemental Magic*): Assembled from 3 forgotten relics found in abandoned Meadows chests (`PartWindCrystal`, `PartCarvedHandle`, `PartRunicBinding`). Fires piercing wind crescents (`35` Slash dmg, `100` knockback, `21m` range).
+1. **Staff of Whispering Wind** (`StaffMeadows`, *Meadows — Elemental Magic*): Assembled at a Workbench from 3 forgotten relics found in abandoned Meadows chests (`PartWindCrystal`, `PartCarvedHandle`, `PartRunicBinding`), and **upgraded exclusively at the Forge of Potential**. Fires piercing wind crescents (`25` Slash dmg `+15` per level, `100` knockback, `21m` range).
 2. **Staff of Purification** (`StaffBlackForest`, *Black Forest — Blood Magic*): Crowned with a glowing shamanic emerald crystal (`50` Eitr, `0%` HP cost). Releases a `10m` healing wave that **cleanses all 6 Combat Injuries and negative debuffs** (*Burning, Poison, Frost, Tar, Lightning, Wet*) **before restoring `+25 / +35 / +45 / +55 HP`** by staff level to all allies in range.
 3. **Censer of Restless Spirit** (`StaffSwamp`, *Swamp — Elemental Magic*): Detonates an `8s` spirit miasma cloud dealing periodic damage and **stripping ALL damage resistances and immunities** from enemies and bosses inside.
 4. **Thor's Thunder Tuning Staff** (`StaffMountain`, *Mountain — Elemental Magic*): Hold-to-charge lightning railgun (`150 / 300 / 450 / 600` Lightning damage) firing an instant piercing beam through enemies, trees, and structures.
@@ -86,9 +86,9 @@ Build the custom 3D **Enchanting Table** (`piece_enchanting_table`) and upgrade 
 ---
 
 ### ☠️ 4. Hunt Champions, 6 Combat Injuries & Cursed Dungeons (`Enemy Overhaul`)
-- **Named Hunt Champions (Biome Vendetta):** Every **~250 slain enemies** (`225–275`), a **Named Champion** with 2-star base stats (`3.0x` HP, `2.0x` dmg) **plus guaranteed biome elemental attacks** (*toxin/poison, frost, fire, lightning*), combat perks, and stagger resistance silently stalks and ambushes the hunter, dropping **guaranteed trophies** (fueling weapon enchants!) and **bonus Coins** (funding Rebirth Scrolls!).
-- **6 Tactical Combat Injuries:** Unblocked enemy hits can inflict *Bleeding* (`x2` bleed damage while sprinting/rolling!), *Hamstrung* (`-25%` speed), *Sundered Armor* (`-30%` armor), *Winded* (`-50%` stamina regen), *Eitr Burn* (casting burns HP), or *Putrid Rot* (`-50%` healing — countered by the *Staff of Purification*!).
-- **Sealed Cursed Dungeons (`10%` of each dungeon type):** Exactly `10%` of every dungeon type in the world (*Burial Chambers, Troll Caves, Sunken Crypts, Frost Caves, Infested Mines, Morgen Caves, Charred Tombs*) are cursed: stepping inside triggers mystical fog, buffs monsters (`+30%` HP & dmg), and **seals the exit shut** until your party slays the **Curse Warden** in the deepest chamber.
+- **Named Hunt Champions (Biome Vendetta):** Every **~25–35 slain enemies** across all species, a **Named Champion** of the **exact creature killed last** ambushes the hunter with 2-star base stats (`3.0x` HP, `2.0x` dmg) **plus guaranteed biome elemental attacks** (*toxin/poison, frost, fire, lightning*), combat perks, and stagger resistance — dropping **guaranteed trophies** and **bonus Coins**.
+- **6 Tactical Combat Injuries:** Unblocked enemy hits dealing at least **`7.5` HP damage** can inflict *Bleeding* (`x2` bleed damage while sprinting/rolling!), *Hamstrung* (`-25%` speed), *Sundered Armor* (`-30%` armor), *Winded* (`-50%` stamina regen), *Eitr Burn* (casting burns HP), or *Putrid Rot* (`-50%` healing — countered by the *Staff of Purification*!).
+- **Sealed Cursed Dungeons (`10%` of each dungeon type):** Strictly `10%` of each multi-room dungeon type (*Burial Chambers, Sunken Crypts, Frost Caves, Infested Mines, Morgen Caves, Charred Tombs*; Troll & Bear caves excluded) are cursed: stepping inside triggers mystical fog, buffs monsters (`+30%` HP & dmg), and **seals the exit shut** until your party slays the **Curse Warden** in the deepest chamber.
 
 ---
 
@@ -112,7 +112,7 @@ Removes boss **Vegvisir** runestones from the overworld and dungeons (or optiona
 | `rpclass reset` | Clear your current class and open the initial selection screen |
 | `rpclass set <warrior\|knight\|thief\|hunter\|sorcerer\|beggar>` | Instantly assign a class (`1..6` also supported) |
 | `enemyoverhaul champion [PrefabName]` | Spawn a stalking Hunt Champion nearby *(e.g. `Troll`, `Draugr`, `Goblin`, `Wolf`, `SeekerBrute`)* |
-| `enemyoverhaul kills [number]` | Check (or set) the global Hunt Champion kill counter (`~225–275` kills) |
+| `enemyoverhaul kills [number]` | Check (or set) the global Hunt Champion kill counter (`25–35` kills) |
 | `enemyoverhaul injury <bleed\|hamstring\|sunder\|winded\|eitrburn\|rot\|all\|clear>` | Inflict or cleanse Combat Injuries (`15m` AoE on `clear`) |
 | `enemyoverhaul map` / `enemyoverhaul map clear` | Show or clear map pins for all active **Cursed Dungeons** |
 | `enemyoverhaul cursedungeon` / `enemyoverhaul uncurse` | Force-curse & seal (or unseal) the nearest/current dungeon |
@@ -177,7 +177,7 @@ Removes boss **Vegvisir** runestones from the overworld and dungeons (or optiona
   <img src="https://raw.githubusercontent.com/Coarstal/PathOfTheFallen/main/docs/images/02_Magic_Staves.jpg" width="880" alt="5 магических посохов" />
 </p>
 
-1. **Посох Шепчущего Ветра** (`StaffMeadows`, *Луга — Магия стихий*): собирается на верстаке из 3 забытых реликвий в сундуках заброшенных построек Лугов; выпускает мощно отбрасывающие серпы сжатого ветра (`21 м`).
+1. **Посох Шепчущего Ветра** (`StaffMeadows`, *Луга — Магия стихий*): собирается на верстаке из 3 забытых реликвий в сундуках заброшенных построек Лугов и **прокачивается исключительно в Кузнице возможностей**; выпускает пронзающие серпы сжатого ветра (`25` рассекающего урона `+15` за каждый уровень, отбрасывание `100`, дальность `21 м`).
 2. **Посох Очищения** (`StaffBlackForest`, *Чёрный лес — Магия крови*): шаманский посох с изумрудным кристаллом (`50` Эйтра, `0%` траты HP). Испускает целебную волну радиусом `10 м`, которая **сперва снимает все 6 Боевых Травм и негативные эффекты** (*Горение, Яд, Иней, Смолу, Молнию, Промокание*), **а затем лечит всех союзников в круге на `+25 / +35 / +45 / +55 HP`** по уровню посоха.
 3. **Кадило Беспокойного Духа** (`StaffSwamp`, *Болота — Магия стихий*): взрывает облако миазмов на `8 сек.`, наносящее периодический урон и **полностью срывающее любые сопротивления и иммунитеты** у врагов и боссов.
 4. **Громовой Камертон Тора** (`StaffMountain`, *Горы — Магия стихий*): заряжаемый молниевый рельсотрон (`150 / 300 / 450 / 600` урона молнией), прошивающий врагов, деревья и постройки навылет.
@@ -211,9 +211,9 @@ Removes boss **Vegvisir** runestones from the overworld and dungeons (or optiona
 ---
 
 ### ☠️ 4. Чемпионы Охоты, 6 Боевых Травм и Проклятые Данжи (`Enemy Overhaul`)
-- **Именные Чемпионы Охоты:** каждые **~250 убитых врагов** (`225–275`) по следу охотника выходит скрытный **Чемпион** с базовыми характеристиками `2★` моба (`3.0x` HP, `2.0x` урона), **но гарантированно бьющий стихией своего биома** (*токсином/ядом, морозом, огнём или молнией*) + боевыми перками и сопротивлением стаггеру. За победу — **100% гарантированный дроп трофеев** (под прокачку чар!) и **монеты** (на Свиток Перерождения!).
-- **6 Боевых Травм:** незаблокированные удары врагов накладывают *Рваную рану* (на спринте и в перекатах урон крови `x2`!), *Простреленное сухожилие*, *Раскол брони*, *Выбитое дыхание*, *Ожог Эйтра* или *Заражение* (`-50%` любого лечения — снимается *Посохом Очищения*!).
-- **Запечатанные Проклятые Данжи (`10%` от каждого типа):** ровно `10%` подземелий каждого типа в мире (*Курганы, Пещеры троллей, Затопленные склепы, Морозные пещеры, Заражённые шахты, Пещеры Моргена и Гробницы*) оказываются прокляты — внутри сгущается цветной туман, мобы получают `+30%` к HP и урону, а **выход наружу запечатывается**, пока не повержен **Страж Проклятия** в дальней комнате.
+- **Именные Чемпионы Охоты:** каждые **~25–35 убитых врагов** (единый счётчик на всех мобов) по следу охотника выходит **Чемпион — того вида моба, который был убит последним**, с базовыми характеристиками `2★` (`3.0x` HP, `2.0x` урона) и **гарантированным стихийным уроном своего биома** (*токсином/ядом, морозом, огнём или молнией*) + боевыми перками. За победу — **100% гарантированный дроп трофеев** и **монеты**.
+- **6 Боевых Травм:** незаблокированные удары врагов (наносящие минимум **`7.5` ед. урона** по здоровью) накладывают *Рваную рану* (на спринте и в перекатах урон крови `x2`!), *Простреленное сухожилие*, *Раскол брони*, *Выбитое дыхание*, *Ожог Эйтра* или *Заражение* (`-50%` любого лечения — снимается *Посохом Очищения*!).
+- **Запечатанные Проклятые Данжи (`10%` от каждого типа):** ровно `10%` многокомнатных подземелий каждого типа в мире (*Курганы, Затопленные склепы, Морозные пещеры, Заражённые шахты, Пещеры Моргена и Гробницы*; пещеры тролля и медведя исключены) оказываются прокляты — внутри сгущается цветной туман, мобы получают `+30%` к HP и урону, а **выход наружу запечатывается**, пока не повержен **Страж Проклятия** в дальней комнате.
 
 ---
 
@@ -248,7 +248,7 @@ Removes boss **Vegvisir** runestones from the overworld and dungeons (or optiona
 | Команда | Описание |
 | :--- | :--- |
 | `enemyoverhaul champion [PrefabName]` | Заспавнить рядом скрытого Чемпиона *(например: `Troll`, `Draugr`, `Goblin`, `Wolf`, `SeekerBrute`)* |
-| `enemyoverhaul kills [число]` | Показать (или задать) общий счётчик убийств до появления Чемпиона (`225–275`) |
+| `enemyoverhaul kills [число]` | Показать (или задать) общий счётчик убийств до появления Чемпиона (`25–35`) |
 | `enemyoverhaul injury <bleed\|hamstring\|sunder\|winded\|eitrburn\|rot\|all>` | Наложить выбранную боевую травму (или все 6 сразу) |
 | `enemyoverhaul injury clear` *(или `cleanse`)* | Снять все боевые травмы со всех игроков в радиусе `15 м` |
 | `enemyoverhaul map` / `enemyoverhaul map clear` | Показать или убрать на карте метки всех активных **Проклятых подземелий** |
