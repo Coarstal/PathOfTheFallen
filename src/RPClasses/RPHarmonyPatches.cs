@@ -270,21 +270,40 @@ namespace CoarstalsRPClasses
             }
         }
 
-        // Warrior "Bloody Onslaught": register melee hits & boost melee attack animation speed per stack!
+        // Warrior "Bloody Onslaught": register melee hits, grant +2.5% lifesteal per stack, & boost melee attack animation speed per stack!
         [HarmonyPatch(typeof(Character), "Damage")]
         public static class Patch_Character_Damage_WarriorOnslaught
         {
             public static void Postfix(Character __instance, HitData hit)
             {
-                if (__instance == null || hit == null) return;
+                if (__instance == null || hit == null || __instance.IsDead()) return;
                 Player local = Player.m_localPlayer;
-                if (local == null || __instance == local) return;
+                if (local == null || __instance == local || local.IsDead()) return;
 
                 if (hit.GetAttacker() == local && !hit.m_ranged && SE_RPClass.IsCombatMeleeSkill(hit.m_skill))
                 {
                     if (RPPlayerClassManager.GetPlayerClass(local) == RPClassType.Warrior)
                     {
                         SE_RPBraveHeart.RegisterMeleeHit();
+                        int stacks = SE_RPBraveHeart.GetActiveStacks();
+                        float lsPerStack = Mathf.Max(0f, RPClassConfig.WarriorBloodlustLifestealPerStack.Value);
+                        if (stacks > 0 && lsPerStack > 0f && !__instance.IsPlayer())
+                        {
+                            // Estimate post-resistance melee damage dealt to the enemy so lifesteal matches real damage
+                            HitData calc = hit.Clone();
+                            HitData.DamageModifiers mods = __instance.GetDamageModifiers(null);
+                            HitData.DamageModifier sigMod;
+                            calc.ApplyResistance(mods, out sigMod);
+                            float dealt = Mathf.Max(0f, calc.GetTotalDamage());
+                            float maxReasonable = Mathf.Max(1f, __instance.GetMaxHealth());
+                            if (dealt > maxReasonable) dealt = maxReasonable;
+
+                            float heal = dealt * (stacks * lsPerStack);
+                            if (heal >= 0.05f)
+                            {
+                                local.Heal(heal, true);
+                            }
+                        }
                     }
                 }
             }
@@ -330,47 +349,140 @@ namespace CoarstalsRPClasses
         }
 
         // ====================================================================
-        // 3b. SORCERER "ARCHMAGE": FORSAKEN POWER MASTERY
-        //     • +50% Forsaken Power duration (7.5 min instead of 5 min)
-        //     • -25% Forsaken Power cooldown (15 min instead of 20 min)
+        // 3b. SORCERER "ARCHMAGE": FORSAKEN POWER MASTERY (SOLO + DEDICATED SERVER CO-OP)
+        //     • +50% Forsaken Power duration (7.5 min instead of 5 min) for the Sorcerer AND all allies in range!
+        //     • -25% Forsaken Power cooldown (15 min instead of 20 min) on Sorcerer!
+        //     NOTE: In Valheim 1.0, `Player.ActivateGuardianPower()` ALWAYS returns `false` (IL_00ac: ldc.i4.0; ret)
+        //     even on successful activation, so we track `m_guardianPowerCooldown` across Prefix -> Postfix and
+        //     broadcast an explicit ZNetView RPC onto every ally receiving the Forsaken Power!
         // ====================================================================
+        internal const string RpcSorcererExtendGuardianPower = "CRP_RPC_ExtendGP";
+
+        internal static bool IsGuardianPowerEffect(StatusEffect se)
+        {
+            if (se == null) return false;
+            string seName = se.name;
+            if (!string.IsNullOrEmpty(seName) && seName.StartsWith("GP_", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+            return se.m_cooldown >= 600f;
+        }
+
+        internal static void ApplyExtendedGuardianDurationLocal(Player targetPlayer, int gpNameHash, float targetTtlSeconds)
+        {
+            if (targetPlayer == null || gpNameHash == 0 || targetTtlSeconds <= 0f) return;
+            SEMan sem = targetPlayer.GetSEMan();
+            if (sem == null) return;
+
+            StatusEffect active = sem.GetStatusEffect(gpNameHash);
+            if (active == null && ObjectDB.instance != null)
+            {
+                StatusEffect prefabSe = ObjectDB.instance.GetStatusEffect(gpNameHash);
+                if (prefabSe != null)
+                {
+                    active = sem.AddStatusEffect(prefabSe, true, 0, 0f);
+                }
+            }
+            if (active != null)
+            {
+                active.m_ttl = targetTtlSeconds;
+                active.ResetTime();
+            }
+        }
+
+        [HarmonyPatch(typeof(Character), "Awake")]
+        public static class Patch_Character_Awake_SorcererGuardianRpc
+        {
+            public static void Postfix(Character __instance)
+            {
+                Player p = __instance as Player;
+                if (p == null) return;
+                ZNetView nv = RPPlayerClassManager.GetNetView(p);
+                if (nv == null || !nv.IsValid()) return;
+
+                nv.Register<int, float>(RpcSorcererExtendGuardianPower, delegate(long sender, int gpHash, float ttlSeconds)
+                {
+                    ApplyExtendedGuardianDurationLocal(p, gpHash, ttlSeconds);
+                });
+            }
+        }
+
         [HarmonyPatch(typeof(Player), "ActivateGuardianPower")]
         public static class Patch_Player_ActivateGuardianPower_Sorcerer
         {
-            public static void Postfix(Player __instance, bool __result)
+            private static readonly FieldInfo s_guardianSeField = typeof(Player).GetField("m_guardianSE", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+
+            public static void Prefix(Player __instance, out float __state)
             {
-                if (!__result || __instance == null) return;
+                __state = (__instance != null) ? __instance.m_guardianPowerCooldown : -1f;
+            }
+
+            public static void Postfix(Player __instance, float __state)
+            {
+                // Detect actual activation: cooldown transitioned from <= 0f to > 0f!
+                if (__instance == null || __state > 0f || __instance.m_guardianPowerCooldown <= 0f) return;
                 if (RPPlayerClassManager.GetPlayerClass(__instance) != RPClassType.Sorcerer) return;
 
+                // 1) Reduce Sorcerer's Forsaken Power cooldown by 25% (1200s -> 900s = 15 min)
                 float cdReduction = Mathf.Clamp(RPClassConfig.SorcererGuardianCooldownReduction.Value, 0f, 0.90f);
-                if (__instance.m_guardianPowerCooldown > 0f && cdReduction > 0f)
+                if (cdReduction > 0f)
                 {
                     __instance.m_guardianPowerCooldown *= (1f - cdReduction);
+                }
+
+                // 2) Extend Forsaken Power duration by +50% (300s -> 450s = 7.5 min) on BOTH the Sorcerer AND all allies within 10m!
+                float durBonus = Mathf.Max(0f, RPClassConfig.SorcererGuardianDurationBonus.Value);
+                if (durBonus <= 0f || s_guardianSeField == null) return;
+
+                StatusEffect gpPrefab = s_guardianSeField.GetValue(__instance) as StatusEffect;
+                if (gpPrefab == null || gpPrefab.m_ttl <= 0f) return;
+
+                int gpHash = gpPrefab.NameHash();
+                float boostedTtl = gpPrefab.m_ttl * (1f + durBonus);
+
+                List<Player> playersInRange = new List<Player>();
+                Player.GetPlayersInRange(__instance.transform.position, 10.5f, playersInRange);
+                for (int i = 0; i < playersInRange.Count; i++)
+                {
+                    Player ally = playersInRange[i];
+                    if (ally == null || ally.IsDead()) continue;
+
+                    ZNetView nv = RPPlayerClassManager.GetNetView(ally);
+                    if (nv != null && nv.IsValid() && !nv.IsOwner())
+                    {
+                        nv.InvokeRPC(RpcSorcererExtendGuardianPower, gpHash, boostedTtl);
+                    }
+                    else
+                    {
+                        ApplyExtendedGuardianDurationLocal(ally, gpHash, boostedTtl);
+                    }
                 }
             }
         }
 
+        // Also cover re-casting / refreshing an already-active Forsaken Power on a Sorcerer or via Internal_AddStatusEffect!
         [HarmonyPatch(typeof(SEMan), "AddStatusEffect", new Type[] { typeof(StatusEffect), typeof(bool), typeof(int), typeof(float), typeof(short) })]
         public static class Patch_SEMan_AddStatusEffect_SorcererGuardianDuration
         {
-            public static void Postfix(Character ___m_character, StatusEffect statusEffect, ref StatusEffect __result)
+            public static void Postfix(SEMan __instance, Character ___m_character, StatusEffect statusEffect, bool resetTime)
             {
-                if (__result == null || statusEffect == null || ___m_character == null) return;
+                if (__instance == null || statusEffect == null || ___m_character == null) return;
                 Player p = ___m_character as Player;
                 if (p == null || RPPlayerClassManager.GetPlayerClass(p) != RPClassType.Sorcerer) return;
-
-                string seName = statusEffect.name;
-                if (string.IsNullOrEmpty(seName)) return;
-
-                // All Forsaken / Guardian Powers in Valheim start with "GP_" (GP_Eikthyr, GP_TheElder, GP_Bonemass, GP_Moder, GP_Yagluth, GP_Queen, GP_Fader...)
-                // or have m_cooldown >= 600f (20 min boss power cooldown).
-                bool isGuardianPower = seName.StartsWith("GP_", StringComparison.OrdinalIgnoreCase) || statusEffect.m_cooldown >= 600f;
-                if (!isGuardianPower) return;
+                if (!IsGuardianPowerEffect(statusEffect) || statusEffect.m_ttl <= 0f) return;
 
                 float durBonus = Mathf.Max(0f, RPClassConfig.SorcererGuardianDurationBonus.Value);
-                if (durBonus > 0f && statusEffect.m_ttl > 0f)
+                if (durBonus <= 0f) return;
+
+                StatusEffect active = __instance.GetStatusEffect(statusEffect.NameHash());
+                if (active != null)
                 {
-                    __result.m_ttl = statusEffect.m_ttl * (1f + durBonus);
+                    active.m_ttl = statusEffect.m_ttl * (1f + durBonus);
+                    if (resetTime)
+                    {
+                        active.ResetTime();
+                    }
                 }
             }
         }

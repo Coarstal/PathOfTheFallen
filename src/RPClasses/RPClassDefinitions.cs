@@ -38,6 +38,7 @@ namespace CoarstalsRPClasses
         public static ConfigEntry<float> WarriorBraveHeartMoveSpeedBonus;
         public static ConfigEntry<float> WarriorBraveHeartHPThreshold;
         public static ConfigEntry<float> WarriorBloodlustAttackSpeedPerStack;
+        public static ConfigEntry<float> WarriorBloodlustLifestealPerStack;
         public static ConfigEntry<int> WarriorBloodlustMaxStacks;
         public static ConfigEntry<float> WarriorBloodlustDuration;
         public static ConfigEntry<float> WarriorBlockPowerPenalty;
@@ -190,6 +191,11 @@ namespace CoarstalsRPClasses
                 "BraveHeartBloodlustAttackSpeedPerStack",
                 0.04f,
                 new ConfigDescription("Melee hit stacking attack speed bonus per stack from 'Brave Heart' (0.04 = +4% attack speed per hit).", null, adminAttr));
+            WarriorBloodlustLifestealPerStack = config.Bind(
+                "01. RP Classes - 1. Warrior",
+                "BraveHeartBloodlustLifestealPerStack",
+                0.025f,
+                new ConfigDescription("Melee lifesteal fraction per 'Bloody Onslaught' stack (0.025 = +2.5% lifesteal per hit, up to 12.5% at 5 stacks).", null, adminAttr));
             WarriorBloodlustMaxStacks = config.Bind(
                 "01. RP Classes - 1. Warrior",
                 "BraveHeartBloodlustMaxStacks",
@@ -631,14 +637,20 @@ namespace CoarstalsRPClasses
                     AppendSectionHeader(sb, "#FFD278", passiveTitle + " — «" + Loc("$rp_se_braveheart") + "»", true);
                     AppendGoodLine(sb, string.Format(Loc("$rp_stat_low_hp_dmg"), Pct(WarriorBraveHeartHPThreshold.Value)), "+" + Pct(WarriorBraveHeartDamageBonus.Value) + "%");
                     AppendGoodLine(sb, Loc("$rp_stat_move_speed"), "+" + Pct(WarriorBraveHeartMoveSpeedBonus.Value) + "%");
-                    AppendSpecialPassiveLine(
-                        sb,
-                        Loc("$rp_stat_warrior_onslaught"),
-                        string.Format(
-                            Loc("$rp_stat_warrior_onslaught_val"),
-                            Pct(WarriorBloodlustAttackSpeedPerStack.Value),
-                            Mathf.RoundToInt(WarriorBloodlustDuration.Value),
-                            Pct(WarriorBloodlustAttackSpeedPerStack.Value * WarriorBloodlustMaxStacks.Value)));
+                    {
+                        float lsPerStackPct = WarriorBloodlustLifestealPerStack.Value * 100f;
+                        float lsMaxPct = lsPerStackPct * WarriorBloodlustMaxStacks.Value;
+                        AppendSpecialPassiveLine(
+                            sb,
+                            Loc("$rp_stat_warrior_onslaught"),
+                            string.Format(
+                                Loc("$rp_stat_warrior_onslaught_val"),
+                                Pct(WarriorBloodlustAttackSpeedPerStack.Value),
+                                lsPerStackPct.ToString("0.##"),
+                                Mathf.RoundToInt(WarriorBloodlustDuration.Value),
+                                Pct(WarriorBloodlustAttackSpeedPerStack.Value * WarriorBloodlustMaxStacks.Value),
+                                lsMaxPct.ToString("0.##")));
+                    }
 
                     AppendSectionHeader(sb, "#FF6E6E", Loc("$rp_ui_debuffs"), true);
                     AppendBadLine(sb, Loc("$rp_stat_block_power"), "-" + Pct(WarriorBlockPowerPenalty.Value) + "%");
@@ -781,6 +793,9 @@ namespace CoarstalsRPClasses
         // ====================================================================
         public static string BuildBraveHeartTooltip()
         {
+            float lsPerStackPct = WarriorBloodlustLifestealPerStack.Value * 100f;
+            float lsMaxPct = lsPerStackPct * WarriorBloodlustMaxStacks.Value;
+
             StringBuilder sb = new StringBuilder();
             sb.Append("<color=#D8C8A8><i>").Append(Loc("$rp_se_braveheart_lore")).Append("</i></color>\n\n");
             AppendGoodLine(sb, string.Format(Loc("$rp_stat_low_hp_dmg"), Pct(WarriorBraveHeartHPThreshold.Value)), "+" + Pct(WarriorBraveHeartDamageBonus.Value) + "%");
@@ -791,8 +806,10 @@ namespace CoarstalsRPClasses
                 string.Format(
                     Loc("$rp_stat_warrior_onslaught_val"),
                     Pct(WarriorBloodlustAttackSpeedPerStack.Value),
+                    lsPerStackPct.ToString("0.##"),
                     Mathf.RoundToInt(WarriorBloodlustDuration.Value),
-                    Pct(WarriorBloodlustAttackSpeedPerStack.Value * WarriorBloodlustMaxStacks.Value)),
+                    Pct(WarriorBloodlustAttackSpeedPerStack.Value * WarriorBloodlustMaxStacks.Value),
+                    lsMaxPct.ToString("0.##")),
                 false);
             return sb.ToString();
         }

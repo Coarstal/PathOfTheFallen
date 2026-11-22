@@ -49,8 +49,12 @@ namespace NewDualAxesMod
         public static ConfigEntry<float> SwampEitrCost;
         public static ConfigEntry<float> SwampCloudDuration;
         public static ConfigEntry<float> SwampCloudRadius;
-        public static ConfigEntry<float> SwampTickDamage;
-        public static ConfigEntry<float> SwampTickDamagePerLevel;
+        public static ConfigEntry<float> SwampTickInterval;
+        public static ConfigEntry<float> SwampPoisonDamage;
+        public static ConfigEntry<float> SwampPoisonPerLevel;
+        public static ConfigEntry<float> SwampSpiritDamage;
+        public static ConfigEntry<float> SwampSpiritPerLevel;
+        public static ConfigEntry<float> SwampEnemySlowPercent;
         public static ConfigEntry<string> SwampStaffRecipe;
 
         public static ConfigEntry<float> MountainDrawEitrPerSec;
@@ -60,9 +64,9 @@ namespace NewDualAxesMod
         public static ConfigEntry<string> MountainStaffRecipe;
 
         public static ConfigEntry<float> PlainsEitrCost;
-        public static ConfigEntry<float> PlainsHealthPercent;
-        public static ConfigEntry<float> PlainsTotemDuration;
-        public static ConfigEntry<float> PlainsTotemExtraDurationPerLevel;
+        public static ConfigEntry<float> PlainsFlatHealthCost;
+        public static ConfigEntry<float> PlainsBuffLingerSeconds;
+        public static ConfigEntry<float> PlainsPurificationHealMultiplier;
         public static ConfigEntry<string> PlainsStaffRecipe;
 
         private static bool s_registered;
@@ -128,11 +132,13 @@ namespace NewDualAxesMod
 
         // ZDO keys for co-op synchronization of spell zones and beams
         internal const string ZdoKeyDuration = "cwp_dur";
+        internal const string ZdoKeyOwnerPid = "cwp_opid";
         internal const string ZdoKeyQuality = "cwp_qual";
         internal const string ZdoKeyBeamStart = "cwp_bstart";
         internal const string ZdoKeyBeamEnd = "cwp_bend";
         internal const string ZdoKeyWaveRadius = "cwp_wrad";
         internal const string RpcPurifyPlayer = "CWP_RPC_PurifyPlayer";
+        internal const string RpcTotemDespawn = "CWP_RPC_TotemDespawn";
 
         // Vanilla effects borrowed from ObjectDB / ZNetScene for authentic Valheim audio-visual feedback
         internal static EffectList s_vanillaFireHitEffects;
@@ -140,10 +146,11 @@ namespace NewDualAxesMod
         internal static EffectList s_vanillaPoisonBombHitEffects;
         internal static EffectList s_vanillaBloodHitEffects;
 
-        // Active Swamp Miasma resistance-strip registry (Character -> expiry Time.time)
+        // Active Swamp Miasma resistance-strip & slow registry (Character -> expiry Time.time)
         internal static readonly Dictionary<Character, float> s_miasmaAfflicted = new Dictionary<Character, float>();
 
-        // Active Plains Blood-Harvest Totem tracker per caster Player (strictly max 1 active totem)
+        // Active Plains Blood-Harvest Totem instances globally & per caster Player (strictly max 1 active totem per caster)
+        internal static readonly HashSet<PlainsBloodHarvestTotemZone> s_allActivePlainsTotems = new HashSet<PlainsBloodHarvestTotemZone>();
         internal static readonly Dictionary<long, List<PlainsBloodHarvestTotemZone>> s_totemsByPlayer = new Dictionary<long, List<PlainsBloodHarvestTotemZone>>();
 
         // Active Plains Totem Field aura registries (Character -> expiry Time.time)
@@ -186,8 +193,8 @@ namespace NewDualAxesMod
 
             BlackForestEitrCost = config.Bind(secBF, "EitrCost", 50f, new ConfigDescription("Eitr cost per Purification cast (default 50 Eitr, 0% HP cost).", null, adminAttr));
             BlackForestCleanseRadius = config.Bind(secBF, "CleanseRadiusMeters", 10f, new ConfigDescription("Radius in meters around the caster within which all players have debuffs cleansed and receive healing.", null, adminAttr));
-            BlackForestBaseHeal = config.Bind(secBF, "BaseHealAmount", 25f, new ConfigDescription("Health restored at staff quality level 1 (+25 HP).", null, adminAttr));
-            BlackForestExtraHealPerLevel = config.Bind(secBF, "ExtraHealPerLevel", 10f, new ConfigDescription("Additional health restored per staff upgrade level (+10 HP/lvl => 25 / 35 / 45 / 55 HP).", null, adminAttr));
+            BlackForestBaseHeal = config.Bind(secBF, "BaseHealAmountV2", 30f, new ConfigDescription("Health restored at staff quality level 1 (+30 HP).", null, adminAttr));
+            BlackForestExtraHealPerLevel = config.Bind(secBF, "ExtraHealPerLevelV2", 10f, new ConfigDescription("Additional health restored per staff upgrade level (+10 HP/lvl => 30 / 40 / 50 / 60 HP).", null, adminAttr));
             BlackForestRecipe = config.Bind(
                 secBF,
                 "Recipe",
@@ -198,8 +205,12 @@ namespace NewDualAxesMod
             SwampEitrCost = config.Bind(secSwamp, "EitrCost", 80f, new ConfigDescription("Eitr cost per Spirit Miasma cast.", null, adminAttr));
             SwampCloudDuration = config.Bind(secSwamp, "CloudDurationSeconds", 8.0f, new ConfigDescription("Duration of the resistance-stripping Spirit Miasma cloud.", null, adminAttr));
             SwampCloudRadius = config.Bind(secSwamp, "CloudRadiusMeters", 7.2f, new ConfigDescription("Radius of the Spirit Miasma cloud in meters.", null, adminAttr));
-            SwampTickDamage = config.Bind(secSwamp, "DamagePerSecond", 28f, new ConfigDescription("Base cloud DPS scalar at level 1 (Spirit portion reduced by 50%).", null, adminAttr));
-            SwampTickDamagePerLevel = config.Bind(secSwamp, "DamagePerSecondPerLevel", 7f, new ConfigDescription("Additional cloud DPS scalar per staff level.", null, adminAttr));
+            SwampTickInterval = config.Bind(secSwamp, "TickIntervalSecondsV2", 2.0f, new ConfigDescription("Interval in seconds between Spirit Miasma cloud damage ticks (default 2.0s).", null, adminAttr));
+            SwampPoisonDamage = config.Bind(secSwamp, "PoisonDamagePerTickV3", 5f, new ConfigDescription("Base Poison damage dealt per tick at level 1 (5 Poison).", null, adminAttr));
+            SwampPoisonPerLevel = config.Bind(secSwamp, "PoisonDamagePerLevelV2", 5f, new ConfigDescription("Additional Poison damage per tick per upgrade level (+5/lvl => 5 / 10 / 15 / 20).", null, adminAttr));
+            SwampSpiritDamage = config.Bind(secSwamp, "SpiritDamagePerTickV2", 5f, new ConfigDescription("Base Spirit damage dealt per tick at level 1 (5 Spirit).", null, adminAttr));
+            SwampSpiritPerLevel = config.Bind(secSwamp, "SpiritDamagePerLevelV2", 5f, new ConfigDescription("Additional Spirit damage per tick per upgrade level (+5/lvl => 5 / 10 / 15 / 20).", null, adminAttr));
+            SwampEnemySlowPercent = config.Bind(secSwamp, "EnemyMoveSpeedSlowPercent", 20f, new ConfigDescription("Movement speed reduction (%) applied to enemies inside the Spirit Miasma cloud (default 20%).", null, adminAttr));
             SwampStaffRecipe = config.Bind(
                 secSwamp,
                 "Recipe",
@@ -218,14 +229,14 @@ namespace NewDualAxesMod
                 new ConfigDescription("Forge level 3 recipe.", null, adminAttr)
             );
 
-            PlainsEitrCost = config.Bind(secPlains, "EitrCost", 50f, new ConfigDescription("Eitr cost per Blood Totem deployment.", null, adminAttr));
-            PlainsHealthPercent = config.Bind(secPlains, "HealthPercentageCost", 50f, new ConfigDescription("Current HP percentage cost per cast.", null, adminAttr));
-            PlainsTotemDuration = config.Bind(secPlains, "TotemDurationSeconds", 15f, new ConfigDescription("Base lifetime of the deployed Blood Totem field in seconds at level 1.", null, adminAttr));
-            PlainsTotemExtraDurationPerLevel = config.Bind(secPlains, "ExtraSecondsPerLevel", 5f, new ConfigDescription("Additional Blood Totem duration in seconds per upgrade level (+5s/lvl => 15/20/25/30s).", null, adminAttr));
+            PlainsEitrCost = config.Bind(secPlains, "EitrCostV2", 75f, new ConfigDescription("Fixed Eitr cost per Blood Totem deployment (75 Eitr).", null, adminAttr));
+            PlainsFlatHealthCost = config.Bind(secPlains, "FlatHealthCostV2", 50f, new ConfigDescription("Fixed flat Health cost per Blood Totem deployment (50 HP).", null, adminAttr));
+            PlainsBuffLingerSeconds = config.Bind(secPlains, "FieldBuffLingerSeconds", 5.0f, new ConfigDescription("Duration in seconds that the Blood Totem aura persists on players after stepping out of the totem's field (default 5s).", null, adminAttr));
+            PlainsPurificationHealMultiplier = config.Bind(secPlains, "PurificationHealMultiplier", 1.5f, new ConfigDescription("Healing multiplier applied to Staff of Purification (2nd staff) when cast inside or empowered by the Blood Totem field (default 1.5x).", null, adminAttr));
             PlainsStaffRecipe = config.Bind(
                 secPlains,
-                "Recipe",
-                "BlackMetal:25:10,GoblinTotem:1:1,LinenThread:15:6,LoxPelt:4:2",
+                "RecipeV2",
+                "BlackMetal:25:0,GoblinTotem:1:0,LinenThread:15:0,LoxPelt:4:0",
                 new ConfigDescription("Forge level 4 recipe.", null, adminAttr)
             );
         }
@@ -252,18 +263,18 @@ namespace NewDualAxesMod
                 { "item_staff_meadows", "Staff of Whispering Wind" },
                 { "item_staff_meadows_desc", "Assembled from forgotten Meadows relics. Releases piercing crescent blades of compressed wind with powerful knockback (21m range)." },
                 { "item_staff_blackforest", "Staff of Purification" },
-                { "item_staff_blackforest_desc", "A shamanic Black Forest staff crowned with a living emerald heart. Releases a radiant 10m wave of forest vitality that cleanses all combat injuries and negative status effects before restoring health (+25/35/45/55 HP by level)." },
+                { "item_staff_blackforest_desc", "A shamanic Black Forest staff crowned with a living emerald heart. Releases a radiant 10m wave of forest vitality that cleanses all combat injuries and negative status effects before restoring health (+30/40/50/60 HP by level; x1.5 stronger inside a Blood Totem field)." },
                 { "item_staff_swamp", "Censer of Restless Spirit" },
-                { "item_staff_swamp_desc", "A rusted iron censer forged from crypt chains and bog roots. Hurls spirit miasma that detonates into an 8-second cloud dealing damage and stripping ALL enemy damage resistances." },
+                { "item_staff_swamp_desc", "A rusted iron censer forged from crypt chains and bog roots. Hurls spirit miasma that detonates into an 8-second cloud dealing damage every 2 seconds, slowing enemies by 20%, and stripping ALL enemy damage resistances." },
                 { "item_staff_mountain", "Thor's Thunder Tuning Staff" },
                 { "item_staff_mountain_desc", "A silver-obsidian tuning fork etched with Thor's knot. Hold to charge and release a piercing hitscan lightning railgun beam through foes, trees, and structures." },
                 { "item_staff_mountain_eitrhold", "Eitr drain" },
                 { "item_staff_mountain_chargetime", "Charge time" },
                 { "item_staff_plains", "Staff of Blood Harvest" },
-                { "item_staff_plains_desc", "A Black Metal ritual staff that deploys a Blood Ritual Totem (15/20/25/30s by level, max 1 active totem) summoning a crimson rainstorm. Inside the blood rain, enemies move 40% slower while players gain +10% move speed, +50% HP & Eitr regen, and -30% to all stamina/eitr/health action costs." },
+                { "item_staff_plains_desc", "A Black Metal ritual staff that deploys a permanent Blood Ritual Totem (max 1 active totem; replaced on recast) summoning a crimson rainstorm. Inside the blood rain, enemies move 40% slower, Staff of Purification healing is 1.5x stronger, and players gain +10% move speed, +50% HP & Eitr regen, and -30% to all action costs (persists 5s after leaving)." },
 
                 { "se_plains_bloodfield_name", "Blood Totem Aura" },
-                { "se_plains_bloodfield_tooltip", "Movement speed +10%\nHealth regeneration +50%\nEitr regeneration +50%\nAll stamina, eitr & health action costs -30%\nEnemies in field slowed by 40%" },
+                { "se_plains_bloodfield_tooltip", "Movement speed +10%\nHealth regeneration +50%\nEitr regeneration +50%\nAll stamina, eitr & health action costs -30%\nStaff of Purification healing x1.5\nEnemies in field slowed by 40%" },
 
                 { "msg_bf_cleansed", "Purified" },
                 { "msg_mtn_fizzle", "Charge aborted! Hold until 100% charged" }
@@ -282,18 +293,18 @@ namespace NewDualAxesMod
                 { "item_staff_meadows", "Посох Шепчущего Ветра" },
                 { "item_staff_meadows_desc", "Собранный из древних реликвий Лугов посох магии стихий. Выпускает мощно отбрасывающие пронзающие серпы сжатого ветра на дальность 21 м." },
                 { "item_staff_blackforest", "Посох Очищения" },
-                { "item_staff_blackforest_desc", "Шаманский посох Чёрного Леса с живым изумрудным кристаллом на магии крови. Выпускает вокруг заклинателя целебную волну радиусом 10 м, снимающую все боевые травмы и негативные эффекты и восстанавливающую здоровье (+25/35/45/55 HP по уровню)." },
+                { "item_staff_blackforest_desc", "Шаманский посох Чёрного Леса с живым изумрудным кристаллом на магии крови. Выпускает вокруг заклинателя целебную волну радиусом 10 м, снимающую все боевые травмы и негативные эффекты и восстанавливающую здоровье (+30/40/50/60 HP по уровню; в 1,5 раза сильнее в поле Кровавого Тотема)." },
                 { "item_staff_swamp", "Кадило Беспокойного Духа" },
-                { "item_staff_swamp_desc", "Болотное кадило магии стихий на ржавых цепях. Взрывает духовную миазму, оставляя на 8 секунд широкое облако дыма, наносящее урон и полностью снимающее все сопротивления и иммунитеты к урону у врагов." },
+                { "item_staff_swamp_desc", "Болотное кадило магии стихий на ржавых цепях. Взрывает духовную миазму, оставляя на 8 секунд широкое облако дыма: наносит урон каждые 2 секунды, замедляет бег врагов на 20% и полностью снимает все сопротивления и иммунитеты к урону." },
                 { "item_staff_mountain", "Громовой Камертон Тора" },
                 { "item_staff_mountain_desc", "Серебряно-обсидиановый рейлган магии стихий со знаком Тора. При полной зарядке выпускает мощный луч молнии навылет сквозь врагов, деревья и постройки." },
                 { "item_staff_mountain_eitrhold", "Расход эйтра" },
                 { "item_staff_mountain_chargetime", "Время зарядки" },
                 { "item_staff_plains", "Посох Кровавой Жатвы" },
-                { "item_staff_plains_desc", "Ритуальный посох Равнин на магии крови (15/20/25/30 сек. по уровню, лимит: 1 тотем). Призывает кровавый дождь в области тотема: замедляет врагов на 40%, ускоряет игроков на 10%, снижает все затраты бега/атак/блока и др. на 30% и повышает регенерацию здоровья и эйтра на 50%." },
+                { "item_staff_plains_desc", "Ритуальный посох Равнин на магии крови (75 Эйтра и 50 HP, лимит: 1 постоянный тотем). Призывает бесконечный кровавый дождь в области тотема: замедляет врагов на 40%, усиливает исцеление Посоха Очищения в 1,5 раза, ускоряет игроков на 10%, снижает затраты на 30% и повышает регенерацию HP и эйтра на 50% (бафф держится ещё 5 сек. после выхода из поля)." },
 
                 { "se_plains_bloodfield_name", "Поле Кровавого Тотема" },
-                { "se_plains_bloodfield_tooltip", "Скорость передвижения: +10%\nВосстановление здоровья: +50%\nВосстановление эйтра: +50%\nВсе затраты выносливости, эйтра и здоровья: -30%\nВраги в поле замедлены на 40%" },
+                { "se_plains_bloodfield_tooltip", "Скорость передвижения: +10%\nВосстановление здоровья: +50%\nВосстановление эйтра: +50%\nВсе затраты выносливости, эйтра и здоровья: -30%\nИсцеление Посоха Очищения: x1,5\nВраги в поле замедлены на 40%" },
 
                 { "msg_bf_cleansed", "Очищение" },
                 { "msg_mtn_fizzle", "Заряд сорвался! Удерживайте до полной зарядки" }
@@ -456,10 +467,10 @@ namespace NewDualAxesMod
                     slashPerLvl: 0f,
                     lightningDmg: 0f,
                     lightningPerLvl: 0f,
-                    spiritDmg: SwampTickDamage.Value * 0.275f,
-                    spiritPerLvl: SwampTickDamagePerLevel.Value * 0.275f,
-                    poisonDmg: SwampTickDamage.Value * 0.45f,
-                    poisonPerLvl: SwampTickDamagePerLevel.Value * 0.45f,
+                    spiritDmg: SwampSpiritDamage.Value,
+                    spiritPerLvl: SwampSpiritPerLevel.Value,
+                    poisonDmg: SwampPoisonDamage.Value,
+                    poisonPerLvl: SwampPoisonPerLevel.Value,
                     isBowDrawRailgun: false,
                     maxQuality: 4,
                     attackForce: 25f,
@@ -506,7 +517,7 @@ namespace NewDualAxesMod
                     maxDurability: 220f
                 );
 
-                // Plains Staff — Blood Ritual Totem Staff (Blood Magic, Forge lvl 4, Upgradable +5s/lvl, Max 1 Totem)
+                // Plains Staff — Blood Ritual Totem Staff (Blood Magic, Forge lvl 4, Infinite Active Totem, Fixed 75 Eitr + 50 HP cost, Max 1 Totem)
                 RegisterMagicStaff(
                     prefabName: PlainsStaffPrefab,
                     donorName: staffDonor,
@@ -524,7 +535,8 @@ namespace NewDualAxesMod
                     recipeStr: PlainsStaffRecipe.Value,
                     eitrCost: PlainsEitrCost.Value,
                     drawEitrPerSec: 0f,
-                    healthPctCost: PlainsHealthPercent.Value,
+                    healthPctCost: 0f,
+                    flatHealthCost: PlainsFlatHealthCost.Value,
                     projectilePrefab: s_plainsTotemProjPrefab,
                     projectileVel: 24f,
                     slashDmg: 0f,
@@ -536,7 +548,7 @@ namespace NewDualAxesMod
                     poisonDmg: 0f,
                     poisonPerLvl: 0f,
                     isBowDrawRailgun: false,
-                    maxQuality: 4,
+                    maxQuality: 1,
                     attackForce: 25f,
                     toolTier: 4,
                     blockPower: 48f,
@@ -1177,6 +1189,12 @@ namespace NewDualAxesMod
             if (s_plainsTotemZonePrefab == null)
             {
                 s_plainsTotemZonePrefab = CreateNetworkedSpellPrefab("CWP_Zone_PlainsHarvestTotem", false, false);
+                ZNetView totemZnv = s_plainsTotemZonePrefab.GetComponent<ZNetView>();
+                if (totemZnv != null)
+                {
+                    // Persistent ZDO so the infinite Blood Totem stays in the world until replaced or session ends!
+                    totemZnv.m_persistent = true;
+                }
                 s_plainsTotemZonePrefab.AddComponent<PlainsBloodHarvestTotemZone>();
                 PrefabManager.Instance.AddPrefab(s_plainsTotemZonePrefab);
             }
@@ -1188,7 +1206,7 @@ namespace NewDualAxesMod
                 se.m_name = "$se_plains_bloodfield_name";
                 se.m_tooltip = "$se_plains_bloodfield_tooltip";
                 se.m_icon = (s_plainsTotemIcon != null) ? s_plainsTotemIcon : s_plainsIcon;
-                se.m_ttl = 0.65f;
+                se.m_ttl = PlainsBuffLingerSeconds != null ? Mathf.Max(1f, PlainsBuffLingerSeconds.Value) : 5.0f;
                 // +10% move speed, +50% HP regen, +50% Eitr regen, -30% ALL stamina action costs!
                 se.m_speedModifier = 0.10f;
                 se.m_swimSpeedModifier = 0.10f;
@@ -1302,7 +1320,8 @@ namespace NewDualAxesMod
             float attackForce,
             int toolTier,
             float blockPower,
-            float maxDurability)
+            float maxDurability,
+            float flatHealthCost = 0f)
         {
             GameObject cloned = PrefabManager.Instance.CreateClonedPrefab(prefabName, donorName);
             if (cloned == null) return;
@@ -1379,9 +1398,9 @@ namespace NewDualAxesMod
                     atk.m_launchAngle = 0f;
                     atk.m_attackStamina = 0f;
                     atk.m_attackEitr = eitrCost;
-                    atk.m_attackHealth = 0f;
+                    atk.m_attackHealth = flatHealthCost;
                     atk.m_attackHealthPercentage = healthPctCost;
-                    atk.m_attackHealthLowBlockUse = (healthPctCost > 0f);
+                    atk.m_attackHealthLowBlockUse = (healthPctCost > 0f || flatHealthCost > 0f);
                     atk.m_requiresReload = false;
                     atk.m_reloadTime = 0f;
                     atk.m_reloadStaminaDrain = 0f;
@@ -2189,6 +2208,14 @@ namespace NewDualAxesMod
             return false;
         }
 
+        internal static bool IsPlainsTotemStaff(ItemDrop.ItemData weapon)
+        {
+            if (weapon == null || weapon.m_shared == null) return false;
+            if (weapon.m_shared.m_name == "$item_staff_plains") return true;
+            if (weapon.m_dropPrefab != null && weapon.m_dropPrefab.name == PlainsStaffPrefab) return true;
+            return false;
+        }
+
         internal static float GetMountainRequiredChargeSecondsForQuality(int quality)
         {
             int q = Mathf.Max(1, quality);
@@ -2451,9 +2478,32 @@ namespace NewDualAxesMod
         public static float GetPurificationHealForQuality(int qualityLevel)
         {
             int q = Mathf.Max(1, qualityLevel);
-            float baseHeal = BlackForestBaseHeal != null ? BlackForestBaseHeal.Value : 25f;
+            float baseHeal = BlackForestBaseHeal != null ? BlackForestBaseHeal.Value : 30f;
             float extraHeal = BlackForestExtraHealPerLevel != null ? BlackForestExtraHealPerLevel.Value : 10f;
             return Mathf.Max(0f, baseHeal + (q - 1) * extraHeal);
+        }
+
+        internal static bool IsPositionInsideAnyActivePlainsTotem(Vector3 pos)
+        {
+            if (s_allActivePlainsTotems.Count == 0) return false;
+            float rSq = PlainsTotemZoneRadius * PlainsTotemZoneRadius;
+            foreach (PlainsBloodHarvestTotemZone totem in s_allActivePlainsTotems)
+            {
+                if (totem != null && totem.IsTotemAlive && (totem.transform.position - pos).sqrMagnitude <= rSq)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        internal static bool IsPlayerEmpoweredByPlainsTotemForHeal(Character ch)
+        {
+            if (ch == null) return false;
+            if (IsPositionInsideAnyActivePlainsTotem(ch.transform.position)) return true;
+            if (IsPlayerPlainsBuffed(ch)) return true;
+            SEMan sem = ch.GetSEMan();
+            return sem != null && s_plainsBuffStatusHash != 0 && sem.HaveStatusEffect(s_plainsBuffStatusHash);
         }
 
         public static void ApplyPurificationAndHealLocal(Player target, float healAmount)
@@ -2500,7 +2550,9 @@ namespace NewDualAxesMod
 
             int quality = (weapon != null) ? Mathf.Max(1, weapon.m_quality) : 1;
             float radius = BlackForestCleanseRadius != null ? Mathf.Max(1f, BlackForestCleanseRadius.Value) : 10f;
-            float healAmount = GetPurificationHealForQuality(quality);
+            float baseHealAmount = GetPurificationHealForQuality(quality);
+            float totemHealMult = PlainsPurificationHealMultiplier != null ? Mathf.Max(1f, PlainsPurificationHealMultiplier.Value) : 1.5f;
+            bool casterInTotem = IsPlayerEmpoweredByPlainsTotemForHeal(owner);
             Vector3 center = owner.transform.position;
 
             SpawnImpactBurstLight(center + Vector3.up * 1.0f, new Color(0.25f, 1.0f, 0.55f, 1f), 9.0f, 2.6f, 0.45f);
@@ -2530,15 +2582,18 @@ namespace NewDualAxesMod
                     if (p == null || p.IsDead()) continue;
                     if ((p.transform.position - center).sqrMagnitude <= rSq)
                     {
+                        bool empowered = casterInTotem || IsPlayerEmpoweredByPlainsTotemForHeal(p);
+                        float finalHeal = empowered ? (baseHealAmount * totemHealMult) : baseHealAmount;
+
                         ZNetView nv = p.GetComponent<ZNetView>();
                         if (nv != null && nv.IsValid() && !nv.IsOwner())
                         {
                             // Atomic single RPC so remote ally cleanses Rot BEFORE applying Heal!
-                            nv.InvokeRPC(RpcPurifyPlayer, healAmount);
+                            nv.InvokeRPC(RpcPurifyPlayer, finalHeal);
                         }
                         else
                         {
-                            ApplyPurificationAndHealLocal(p, healAmount);
+                            ApplyPurificationAndHealLocal(p, finalHeal);
                         }
                         affectedCount++;
                     }
@@ -2596,6 +2651,27 @@ namespace NewDualAxesMod
             Player p = owner as Player;
             long pid = (p != null) ? p.GetPlayerID() : 0L;
 
+            // Despawn any previously deployed totem belonging to this player across the world (including co-op ZDO-synced totems)
+            if (pid != 0L && s_allActivePlainsTotems.Count > 0)
+            {
+                List<PlainsBloodHarvestTotemZone> toDespawn = null;
+                foreach (PlainsBloodHarvestTotemZone existing in s_allActivePlainsTotems)
+                {
+                    if (existing != null && existing != newTotem && existing.IsTotemAlive && existing.OwnerPlayerId == pid)
+                    {
+                        if (toDespawn == null) toDespawn = new List<PlainsBloodHarvestTotemZone>();
+                        toDespawn.Add(existing);
+                    }
+                }
+                if (toDespawn != null)
+                {
+                    for (int i = 0; i < toDespawn.Count; i++)
+                    {
+                        toDespawn[i].DespawnReplaced();
+                    }
+                }
+            }
+
             List<PlainsBloodHarvestTotemZone> list;
             if (!s_totemsByPlayer.TryGetValue(pid, out list))
             {
@@ -2617,13 +2693,14 @@ namespace NewDualAxesMod
             {
                 PlainsBloodHarvestTotemZone oldest = list[0];
                 list.RemoveAt(0);
-                if (oldest != null && oldest.IsTotemAlive)
+                if (oldest != null && oldest != newTotem && oldest.IsTotemAlive)
                 {
                     oldest.DespawnReplaced();
                 }
             }
 
             list.Add(newTotem);
+            s_allActivePlainsTotems.Add(newTotem);
         }
 
         internal static void MarkEnemyPlainsSlowed(Character enemy, float graceSeconds)
@@ -2652,7 +2729,9 @@ namespace NewDualAxesMod
         internal static void MarkPlayerPlainsBuffed(Character player, float graceSeconds)
         {
             if (player == null) return;
-            float exp = Time.time + graceSeconds;
+            float linger = PlainsBuffLingerSeconds != null ? Mathf.Max(0.5f, PlainsBuffLingerSeconds.Value) : 5.0f;
+            float dur = Mathf.Max(graceSeconds, linger);
+            float exp = Time.time + dur;
             float cur;
             if (!s_plainsBuffedPlayers.TryGetValue(player, out cur) || exp > cur)
             {
@@ -2662,9 +2741,11 @@ namespace NewDualAxesMod
             SEMan sem = player.GetSEMan();
             if (sem != null && s_plainsBuffStatusEffect != null)
             {
+                s_plainsBuffStatusEffect.m_ttl = linger;
                 StatusEffect active = sem.GetStatusEffect(s_plainsBuffStatusHash);
                 if (active != null)
                 {
+                    active.m_ttl = linger;
                     active.ResetTime();
                 }
                 else
@@ -3086,7 +3167,7 @@ namespace NewDualAxesMod
     }
 
     /// <summary>
-    /// Slows enemies inside the Plains Blood Totem field by 40% (`speed *= 0.60f`).
+    /// Slows enemies inside the Swamp Miasma Cloud by 20% (`speed *= 0.80f`) and inside the Plains Blood Totem field by 40% (`speed *= 0.60f`).
     /// Note: Player +10% move speed, +50% HP & Eitr regen, and -30% ALL stamina costs are handled natively by `SE_PlainsBloodFieldBuff` (`SE_Stats`)!
     /// </summary>
     [HarmonyPatch(typeof(SEMan), "ApplyStatusEffectSpeedMods")]
@@ -3094,7 +3175,17 @@ namespace NewDualAxesMod
     {
         private static void Postfix(Character ___m_character, ref float speed)
         {
-            if (___m_character != null && MagicStavesModule.IsEnemyPlainsSlowed(___m_character))
+            if (___m_character == null) return;
+
+            if (MagicStavesModule.IsCharacterMiasmaAfflicted(___m_character))
+            {
+                float swampSlowPct = MagicStavesModule.SwampEnemySlowPercent != null
+                    ? Mathf.Clamp(MagicStavesModule.SwampEnemySlowPercent.Value, 0f, 95f)
+                    : 20f;
+                speed *= (1f - swampSlowPct * 0.01f);
+            }
+
+            if (MagicStavesModule.IsEnemyPlainsSlowed(___m_character))
             {
                 speed *= 0.60f;
             }
@@ -3102,8 +3193,73 @@ namespace NewDualAxesMod
     }
 
     /// <summary>
+    /// Enforces strictly fixed flat resource cost (`75` Eitr & `50` HP) on the 5th Staff (`StaffPlains`),
+    /// ignoring vanilla `BloodMagic` skill cost reduction and preventing the Totem's own `-30%` aura from discounting Totem recasts!
+    /// </summary>
+    [HarmonyPatch(typeof(Attack), "GetAttackEitr", new Type[0])]
+    public static class Attack_GetAttackEitr_PlainsFixedCost_Patch
+    {
+        private static readonly System.Reflection.FieldInfo s_atkWeaponField = typeof(Attack).GetField("m_weapon", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
+
+        private static bool Prefix(Attack __instance, ref float __result)
+        {
+            if (__instance == null || s_atkWeaponField == null) return true;
+            ItemDrop.ItemData w = s_atkWeaponField.GetValue(__instance) as ItemDrop.ItemData;
+            if (!MagicStavesModule.IsPlainsTotemStaff(w)) return true;
+
+            // Keep Sorcerer "Arcane Resonance" every-5th-cast-free synergy intact
+            if (RPClassesModule.IsActive && Player.m_localPlayer != null &&
+                RPPlayerClassManager.GetPlayerClass(Player.m_localPlayer) == RPClassType.Sorcerer &&
+                RPHarmonyPatches.SorcererFreeCastTracker.IsNextCastFree)
+            {
+                __result = 0f;
+                return false;
+            }
+
+            __result = MagicStavesModule.PlainsEitrCost != null ? MagicStavesModule.PlainsEitrCost.Value : 75f;
+            return false;
+        }
+    }
+
+    [HarmonyPatch(typeof(Attack), "GetAttackEitr", new Type[] { typeof(Character), typeof(ItemDrop.ItemData) })]
+    public static class Attack_GetAttackEitrWithWeapon_PlainsFixedCost_Patch
+    {
+        private static bool Prefix(Character character, ItemDrop.ItemData weapon, ref float __result)
+        {
+            if (!MagicStavesModule.IsPlainsTotemStaff(weapon)) return true;
+
+            if (RPClassesModule.IsActive && character != null && character == Player.m_localPlayer &&
+                RPPlayerClassManager.GetPlayerClass(Player.m_localPlayer) == RPClassType.Sorcerer &&
+                RPHarmonyPatches.SorcererFreeCastTracker.IsNextCastFree)
+            {
+                __result = 0f;
+                return false;
+            }
+
+            __result = MagicStavesModule.PlainsEitrCost != null ? MagicStavesModule.PlainsEitrCost.Value : 75f;
+            return false;
+        }
+    }
+
+    [HarmonyPatch(typeof(Attack), "GetAttackHealth", new Type[0])]
+    public static class Attack_GetAttackHealth_PlainsFixedCost_Patch
+    {
+        private static readonly System.Reflection.FieldInfo s_atkWeaponField = typeof(Attack).GetField("m_weapon", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
+
+        private static bool Prefix(Attack __instance, ref float __result)
+        {
+            if (__instance == null || s_atkWeaponField == null) return true;
+            ItemDrop.ItemData w = s_atkWeaponField.GetValue(__instance) as ItemDrop.ItemData;
+            if (!MagicStavesModule.IsPlainsTotemStaff(w)) return true;
+
+            __result = MagicStavesModule.PlainsFlatHealthCost != null ? MagicStavesModule.PlainsFlatHealthCost.Value : 50f;
+            return false;
+        }
+    }
+
+    /// <summary>
     /// Reduces ALL Eitr & Health action costs by 30% (`* 0.70f`) for players standing inside the Plains Blood Totem field
-    /// (complementing the -30% stamina modifiers on `SE_PlainsBloodFieldBuff` so literally EVERY resource expenditure is -30%!).
+    /// (except re-casting the Plains Blood Totem itself, whose cost is strictly fixed at 75 Eitr & 50 HP).
     /// </summary>
     [HarmonyPatch(typeof(Character), "UseEitr")]
     public static class Character_UseEitr_PlainsFieldDiscount_Patch
@@ -3112,6 +3268,8 @@ namespace NewDualAxesMod
         {
             if (eitr > 0f && __instance != null && MagicStavesModule.IsPlayerPlainsBuffed(__instance))
             {
+                Humanoid hum = __instance as Humanoid;
+                if (hum != null && MagicStavesModule.IsPlainsTotemStaff(hum.GetCurrentWeapon())) return;
                 eitr *= 0.70f;
             }
         }
@@ -3124,6 +3282,8 @@ namespace NewDualAxesMod
         {
             if (eitrUse > 0f && __instance != null && MagicStavesModule.IsPlayerPlainsBuffed(__instance))
             {
+                Humanoid hum = __instance as Humanoid;
+                if (hum != null && MagicStavesModule.IsPlainsTotemStaff(hum.GetCurrentWeapon())) return;
                 eitrUse *= 0.70f;
             }
         }
@@ -3136,6 +3296,8 @@ namespace NewDualAxesMod
         {
             if (hp > 0f && __instance != null && MagicStavesModule.IsPlayerPlainsBuffed(__instance))
             {
+                Humanoid hum = __instance as Humanoid;
+                if (hum != null && MagicStavesModule.IsPlainsTotemStaff(hum.GetCurrentWeapon())) return;
                 hp *= 0.70f;
             }
         }
@@ -3446,18 +3608,22 @@ namespace NewDualAxesMod
         {
             float rad = MagicStavesModule.BlackForestCleanseRadius != null ? MagicStavesModule.BlackForestCleanseRadius.Value : 10f;
             float heal = MagicStavesModule.GetPurificationHealForQuality(itemQuality);
+            float mult = MagicStavesModule.PlainsPurificationHealMultiplier != null ? Mathf.Max(1f, MagicStavesModule.PlainsPurificationHealMultiplier.Value) : 1.5f;
+            float boostedHeal = heal * mult;
             if (MagicStavesModule.IsRussianLanguageSelected())
             {
                 return string.Format(
-                    "\n<color=#55ff99>Волна очищения (радиус {0:F0} м):\n• Снимает все боевые травмы и негативные эффекты\n• Восстанавливает здоровье: +{1:F0} HP</color>",
+                    "\n<color=#55ff99>Волна очищения (радиус {0:F0} м):\n• Снимает все боевые травмы и негативные эффекты\n• Восстанавливает здоровье: +{1:F0} HP (+{2:F0} HP в поле Кровавого Тотема)</color>",
                     rad,
-                    heal
+                    heal,
+                    boostedHeal
                 );
             }
             return string.Format(
-                "\n<color=#55ff99>Purification Wave ({0:F0} m radius):\n• Cleanses all combat injuries & negative status effects\n• Restores health: +{1:F0} HP</color>",
+                "\n<color=#55ff99>Purification Wave ({0:F0} m radius):\n• Cleanses all combat injuries & negative status effects\n• Restores health: +{1:F0} HP (+{2:F0} HP in Blood Totem field)</color>",
                 rad,
-                heal
+                heal,
+                boostedHeal
             );
         }
     }
@@ -3749,11 +3915,13 @@ namespace NewDualAxesMod
         {
             float dur = MagicStavesModule.SwampCloudDuration != null ? MagicStavesModule.SwampCloudDuration.Value : 8.0f;
             float rad = MagicStavesModule.SwampCloudRadius != null ? MagicStavesModule.SwampCloudRadius.Value : 7.2f;
+            float interval = MagicStavesModule.SwampTickInterval != null ? Mathf.Max(0.2f, MagicStavesModule.SwampTickInterval.Value) : 2.0f;
+            float slowPct = MagicStavesModule.SwampEnemySlowPercent != null ? MagicStavesModule.SwampEnemySlowPercent.Value : 20f;
             if (MagicStavesModule.IsRussianLanguageSelected())
             {
-                return string.Format("\n<color=#55ffaa>Облако духа ({0:F0} сек., радиус {1:F1} м): снимает ВСЕ сопротивления урону у врагов</color>", dur, rad);
+                return string.Format("\n<color=#55ffaa>Облако духа ({0:F0} сек., радиус {1:F1} м, урон каждые {2:0.#} сек.):\n• Замедляет врагов на {3:F0}%\n• Снимает ВСЕ сопротивления урону у врагов</color>", dur, rad, interval, slowPct);
             }
-            return string.Format("\n<color=#55ffaa>Spirit cloud ({0:F0} s, radius {1:F1} m): strips ALL enemy damage resistances</color>", dur, rad);
+            return string.Format("\n<color=#55ffaa>Spirit cloud ({0:F0} s, radius {1:F1} m, every {2:0.#} s):\n• Slows enemies by {3:F0}%\n• Strips ALL enemy damage resistances</color>", dur, rad, interval, slowPct);
         }
 
         private void Update()
@@ -3980,11 +4148,12 @@ namespace NewDualAxesMod
         private Character m_owner;
         private float m_duration = 8.0f;
         private float m_radius = 7.2f;
-        private float m_dps;
-        private HitData.DamageTypes m_bonusEnchantDps;
+        private float m_tickInterval = 2.0f;
+        private float m_poisonPerTick;
+        private float m_spiritPerTick;
+        private HitData.DamageTypes m_bonusEnchantPerTick;
         private float m_elapsed;
         private float m_tickTimer;
-        private const float TickInterval = 0.5f;
         private int m_charMask;
         private ParticleSystem m_groundFogPs;
         private ParticleSystem m_billowSmokePs;
@@ -4010,17 +4179,23 @@ namespace NewDualAxesMod
             m_owner = owner;
             m_duration = MagicStavesModule.SwampCloudDuration != null ? MagicStavesModule.SwampCloudDuration.Value : 8.0f;
             m_radius = MagicStavesModule.SwampCloudRadius != null ? MagicStavesModule.SwampCloudRadius.Value : 7.2f;
+            m_tickInterval = MagicStavesModule.SwampTickInterval != null ? Mathf.Max(0.25f, MagicStavesModule.SwampTickInterval.Value) : 2.0f;
             if (m_nview != null && m_nview.IsValid() && m_nview.GetZDO() != null)
             {
                 m_nview.GetZDO().Set(MagicStavesModule.ZdoKeyDuration, m_duration);
             }
 
+            int q = Mathf.Max(1, quality);
             float skillMult = 1.0f + 0.5f * skillFactor;
-            float baseDps = (MagicStavesModule.SwampTickDamage != null ? MagicStavesModule.SwampTickDamage.Value : 28f)
-                          + (MagicStavesModule.SwampTickDamagePerLevel != null ? MagicStavesModule.SwampTickDamagePerLevel.Value : 7f) * (Mathf.Max(1, quality) - 1);
-            m_dps = baseDps * skillMult;
-            m_bonusEnchantDps = bonusEnchant;
-            m_bonusEnchantDps.Modify(skillMult);
+            float basePoison = (MagicStavesModule.SwampPoisonDamage != null ? MagicStavesModule.SwampPoisonDamage.Value : 5f)
+                             + (MagicStavesModule.SwampPoisonPerLevel != null ? MagicStavesModule.SwampPoisonPerLevel.Value : 5f) * (q - 1);
+            float baseSpirit = (MagicStavesModule.SwampSpiritDamage != null ? MagicStavesModule.SwampSpiritDamage.Value : 5f)
+                             + (MagicStavesModule.SwampSpiritPerLevel != null ? MagicStavesModule.SwampSpiritPerLevel.Value : 5f) * (q - 1);
+
+            m_poisonPerTick = basePoison * skillMult;
+            m_spiritPerTick = baseSpirit * skillMult;
+            m_bonusEnchantPerTick = bonusEnchant;
+            m_bonusEnchantPerTick.Modify(skillMult);
             m_charMask = LayerMask.GetMask(new string[] { "character", "character_net", "character_ghost", "hitbox", "character_noenv" });
 
             SwampMiasmaProjectile.SpawnImpactDetonation(impactPt, transform.position, true);
@@ -4256,9 +4431,9 @@ namespace NewDualAxesMod
             }
 
             m_tickTimer += dt;
-            if (m_tickTimer >= TickInterval)
+            if (m_tickTimer >= m_tickInterval)
             {
-                m_tickTimer -= TickInterval;
+                m_tickTimer -= m_tickInterval;
                 DoMiasmaTick();
             }
         }
@@ -4269,8 +4444,9 @@ namespace NewDualAxesMod
             for (int i = 0; i < cols.Length; i++)
             {
                 Character ch = cols[i].GetComponentInParent<Character>();
-                if (ch == null || ch == m_owner || ch.IsDead()) continue;
-                if (m_owner != null && !BaseAI.IsEnemy(m_owner, ch)) continue;
+                if (ch == null || ch == m_owner || ch.IsDead() || ch.IsPlayer()) continue;
+                Character refChar = m_owner != null ? m_owner : Player.m_localPlayer;
+                if (refChar != null && !BaseAI.IsEnemy(refChar, ch)) continue;
                 MagicStavesModule.MarkCharacterMiasmaAfflicted(ch, grace);
             }
         }
@@ -4279,9 +4455,6 @@ namespace NewDualAxesMod
         {
             Collider[] cols = Physics.OverlapSphere(transform.position, m_radius, m_charMask, QueryTriggerInteraction.Collide);
             HashSet<Character> hitOnce = new HashSet<Character>();
-            float dmgThisTick = m_dps * TickInterval;
-            HitData.DamageTypes bonusThisTick = m_bonusEnchantDps;
-            bonusThisTick.Modify(TickInterval);
 
             for (int i = 0; i < cols.Length; i++)
             {
@@ -4292,31 +4465,45 @@ namespace NewDualAxesMod
                 hitOnce.Add(ch);
 
                 // Strip ALL resistances BEFORE applying damage so even Spirit-immune / Poison-immune enemies take full damage!
-                MagicStavesModule.MarkCharacterMiasmaAfflicted(ch, TickInterval + 0.45f);
+                MagicStavesModule.MarkCharacterMiasmaAfflicted(ch, m_tickInterval + 0.45f);
+
+                // Calculate exact unresisted Poison (5 + 5/lvl) + Spirit (5 + 5/lvl) + bonus enchantment damage
+                // and deliver as a single clean hit once every 2.0 seconds (zero rapid DoT sub-tick spam!)
+                HitData rawCheck = new HitData();
+                rawCheck.m_damage.m_poison = m_poisonPerTick;
+                rawCheck.m_damage.m_spirit = m_spiritPerTick;
+                rawCheck.m_damage.Add(m_bonusEnchantPerTick, 1);
+                rawCheck.m_skill = Skills.SkillType.ElementalMagic;
+                if (m_owner != null)
+                {
+                    rawCheck.SetAttacker(m_owner);
+                    SEMan seman = m_owner.GetSEMan();
+                    if (seman != null)
+                    {
+                        seman.ModifyAttack(Skills.SkillType.ElementalMagic, ref rawCheck);
+                    }
+                }
+
+                HitData.DamageModifiers mods = ch.GetDamageModifiers(null);
+                HitData.DamageModifier sigMod;
+                rawCheck.ApplyResistance(mods, out sigMod);
+                float cleanDirectTickDamage = rawCheck.GetTotalDamage();
 
                 HitData hit = new HitData();
-                // Direct spiritual miasma damage: Spirit reduced by 50% (0.275x) + Poison (0.45x) + any bonus WeaponAttributes enchantments!
-                hit.m_damage.m_spirit = dmgThisTick * 0.275f;
-                hit.m_damage.m_poison = dmgThisTick * 0.45f;
-                hit.m_damage.Add(bonusThisTick, 1);
+                hit.m_damage.m_damage = cleanDirectTickDamage;
                 hit.m_point = ch.GetCenterPoint();
                 hit.m_dir = (ch.transform.position - transform.position).normalized;
                 hit.m_skill = Skills.SkillType.ElementalMagic;
                 if (m_owner != null)
                 {
                     hit.SetAttacker(m_owner);
-                    SEMan seman = m_owner.GetSEMan();
-                    if (seman != null)
-                    {
-                        seman.ModifyAttack(Skills.SkillType.ElementalMagic, ref hit);
-                    }
                 }
                 ch.Damage(hit);
             }
 
             if (hitOnce.Count > 0 && m_owner != null)
             {
-                m_owner.RaiseSkill(Skills.SkillType.ElementalMagic, 0.35f);
+                m_owner.RaiseSkill(Skills.SkillType.ElementalMagic, 0.45f);
             }
         }
     }
@@ -4886,8 +5073,8 @@ namespace NewDualAxesMod
     }
 
     // ========================================================================================================
-    // 5. PLAINS STAFF SPELL: Blood Ritual Totem Field (Enemy -40% Move Speed, Player +10% Move Speed,
-    //    -30% All Stamina/Eitr/Health Action Costs, +50% HP & Eitr Regen, Max 1 Active Totem, Non-Upgradable)
+    // 5. PLAINS STAFF SPELL: Infinite Blood Ritual Totem Field (Enemy -40% Move Speed, Player +10% Move Speed,
+    //    -30% All Stamina/Eitr/Health Action Costs, +50% HP & Eitr Regen, x1.5 Staff 2 Healing, 5s Linger on Exit, Max 1 Active Totem)
     // ========================================================================================================
     public class PlainsTotemDeployProjectile : MonoBehaviour, IProjectile
     {
@@ -4897,27 +5084,22 @@ namespace NewDualAxesMod
             Destroy(gameObject);
         }
 
-        public static float GetTotemDurationForQuality(int itemQuality)
-        {
-            int q = Mathf.Max(1, itemQuality);
-            float baseDur = MagicStavesModule.PlainsTotemDuration != null ? MagicStavesModule.PlainsTotemDuration.Value : 15f;
-            float extraPerLvl = MagicStavesModule.PlainsTotemExtraDurationPerLevel != null ? MagicStavesModule.PlainsTotemExtraDurationPerLevel.Value : 5f;
-            return baseDur + (q - 1) * extraPerLvl;
-        }
-
         public string GetTooltipString(int itemQuality)
         {
-            float dur = GetTotemDurationForQuality(itemQuality);
+            float linger = MagicStavesModule.PlainsBuffLingerSeconds != null ? MagicStavesModule.PlainsBuffLingerSeconds.Value : 5f;
+            float healMult = MagicStavesModule.PlainsPurificationHealMultiplier != null ? MagicStavesModule.PlainsPurificationHealMultiplier.Value : 1.5f;
             if (MagicStavesModule.IsRussianLanguageSelected())
             {
                 return string.Format(
-                    "\n<color=#ff4455>Поле Тотема ({0:F0} сек., лимит: 1 тотем):\n• Враги: -40% к скорости передвижения\n• Игроки: +10% к скорости, +50% к регенерации HP и эйтра, -30% ко всем расходам</color>",
-                    dur
+                    "\n<color=#ff4455>Поле Тотема (бесконечно, лимит: 1 тотем, бафф +{0:F0} сек. после выхода):\n• Враги: -40% к скорости передвижения\n• Посох Очищения: исцеление x{1:0.#}\n• Игроки: +10% к скорости, +50% к регенерации HP и эйтра, -30% ко всем расходам</color>",
+                    linger,
+                    healMult
                 );
             }
             return string.Format(
-                "\n<color=#ff4455>Totem Aura ({0:F0} s, max 1 totem):\n• Enemies: -40% movement speed\n• Players: +10% move speed, +50% HP & Eitr regen, -30% to all action costs</color>",
-                dur
+                "\n<color=#ff4455>Totem Aura (infinite, max 1 totem, +{0:F0}s buff after leaving):\n• Enemies: -40% movement speed\n• Staff of Purification: healing x{1:0.#}\n• Players: +10% move speed, +50% HP & Eitr regen, -30% to all action costs</color>",
+                linger,
+                healMult
             );
         }
 
@@ -4960,9 +5142,6 @@ namespace NewDualAxesMod
                 totemRot = Quaternion.LookRotation(-faceDir.normalized, Vector3.up);
             }
 
-            int quality = (weapon != null) ? Mathf.Max(1, weapon.m_quality) : 1;
-            float duration = GetTotemDurationForQuality(quality);
-
             // Spawn ZNetScene-networked Totem Zone prefab so ALL co-op players see the 3D Totem + Crimson Rainstorm AND receive the buff!
             GameObject totemGo;
             if (MagicStavesModule.s_plainsTotemZonePrefab != null)
@@ -4980,7 +5159,7 @@ namespace NewDualAxesMod
             PlainsBloodHarvestTotemZone totem = totemGo.GetComponent<PlainsBloodHarvestTotemZone>();
             if (totem != null)
             {
-                totem.Init(owner, duration);
+                totem.Init(owner);
                 MagicStavesModule.RegisterDeployedTotem(owner, totem);
             }
 
@@ -4991,12 +5170,13 @@ namespace NewDualAxesMod
     public class PlainsBloodHarvestTotemZone : MonoBehaviour
     {
         public bool IsTotemAlive { get { return m_alive && this != null && gameObject != null; } }
+        public long OwnerPlayerId { get { return m_ownerPlayerId; } }
 
         private ZNetView m_nview;
         private bool m_visualsBuilt;
         private bool m_alive = true;
         private Character m_owner;
-        private float m_duration = 15f;
+        private long m_ownerPlayerId;
         private float m_radius = MagicStavesModule.PlainsTotemZoneRadius;
         private float m_elapsed;
         private float m_auraTimer;
@@ -5007,44 +5187,90 @@ namespace NewDualAxesMod
         private Vector3 m_orbWorldOffset = new Vector3(0f, 0.98f, 0f);
         private ParticleSystem m_bloodRainPs;
         private ParticleSystem m_bloodSplashMistPs;
-        private bool m_stoppedRain;
         private Light m_orbLight;
 
         private void Awake()
         {
             m_nview = GetComponent<ZNetView>();
-            if (m_nview != null && m_nview.IsValid() && !m_nview.IsOwner())
+            m_charMask = LayerMask.GetMask(new string[] { "character", "character_net", "character_ghost", "hitbox", "character_noenv" });
+            MagicStavesModule.s_allActivePlainsTotems.Add(this);
+
+            if (m_nview != null && m_nview.IsValid())
             {
-                m_alive = true;
-                m_duration = m_nview.GetZDO().GetFloat(MagicStavesModule.ZdoKeyDuration, MagicStavesModule.PlainsTotemDuration != null ? MagicStavesModule.PlainsTotemDuration.Value : 15f);
-                m_charMask = LayerMask.GetMask(new string[] { "character", "character_net", "character_ghost", "hitbox", "character_noenv" });
-                BuildTotem3DVisuals();
-                RefreshFieldAura();
-                MagicStavesModule.SpawnImpactBurstLight(transform.position + Vector3.up * 0.9f, new Color(1.0f, 0.10f, 0.16f, 1f), 7.0f, 2.5f, 0.35f);
+                m_nview.Register(MagicStavesModule.RpcTotemDespawn, RPC_OnDespawnRequested);
+                if (m_nview.GetZDO() != null)
+                {
+                    m_ownerPlayerId = m_nview.GetZDO().GetLong(MagicStavesModule.ZdoKeyOwnerPid, 0L);
+                }
+                if (!m_nview.IsOwner())
+                {
+                    m_alive = true;
+                    BuildTotem3DVisuals();
+                    RefreshFieldAura();
+                    MagicStavesModule.SpawnImpactBurstLight(transform.position + Vector3.up * 0.9f, new Color(1.0f, 0.10f, 0.16f, 1f), 7.0f, 2.5f, 0.35f);
+                }
             }
         }
 
-        public void Init(Character owner, float durationSeconds)
+        private void Start()
+        {
+            // Also ensure reloaded persistent ZDO totems build visuals cleanly on the ZDO owner
+            if (!m_visualsBuilt && m_alive)
+            {
+                if (m_nview != null && m_nview.IsValid() && m_nview.GetZDO() != null && m_ownerPlayerId == 0L)
+                {
+                    m_ownerPlayerId = m_nview.GetZDO().GetLong(MagicStavesModule.ZdoKeyOwnerPid, 0L);
+                }
+                BuildTotem3DVisuals();
+                RefreshFieldAura();
+            }
+        }
+
+        public void Init(Character owner)
         {
             if (m_nview == null) m_nview = GetComponent<ZNetView>();
             m_alive = true;
             m_owner = owner;
-            m_duration = Mathf.Max(1f, durationSeconds);
-            if (m_nview != null && m_nview.IsValid() && m_nview.GetZDO() != null)
+            Player p = owner as Player;
+            m_ownerPlayerId = (p != null) ? p.GetPlayerID() : 0L;
+            if (m_nview != null && m_nview.IsValid() && m_nview.GetZDO() != null && m_ownerPlayerId != 0L)
             {
-                m_nview.GetZDO().Set(MagicStavesModule.ZdoKeyDuration, m_duration);
+                m_nview.GetZDO().Set(MagicStavesModule.ZdoKeyOwnerPid, m_ownerPlayerId);
             }
             m_charMask = LayerMask.GetMask(new string[] { "character", "character_net", "character_ghost", "hitbox", "character_noenv" });
+            MagicStavesModule.s_allActivePlainsTotems.Add(this);
 
             BuildTotem3DVisuals();
             RefreshFieldAura();
             MagicStavesModule.SpawnImpactBurstLight(transform.position + Vector3.up * 0.9f, new Color(1.0f, 0.10f, 0.16f, 1f), 7.0f, 2.5f, 0.35f);
         }
 
-        public void DespawnReplaced()
+        private void RPC_OnDespawnRequested(long sender)
         {
             if (!m_alive) return;
             m_alive = false;
+            MagicStavesModule.s_allActivePlainsTotems.Remove(this);
+            DetachRainGracefully();
+            MagicStavesModule.SpawnImpactBurstLight(transform.position + Vector3.up * 0.8f, new Color(0.95f, 0.12f, 0.18f, 1f), 5.0f, 1.8f, 0.25f);
+            if (m_nview != null && m_nview.IsValid() && m_nview.IsOwner() && ZNetScene.instance != null)
+            {
+                ZNetScene.instance.Destroy(gameObject);
+            }
+        }
+
+        public void DespawnReplaced()
+        {
+            if (!m_alive) return;
+            if (m_nview != null && m_nview.IsValid() && !m_nview.IsOwner())
+            {
+                m_alive = false;
+                MagicStavesModule.s_allActivePlainsTotems.Remove(this);
+                DetachRainGracefully();
+                m_nview.InvokeRPC(MagicStavesModule.RpcTotemDespawn);
+                return;
+            }
+            m_alive = false;
+            MagicStavesModule.s_allActivePlainsTotems.Remove(this);
             DetachRainGracefully();
             MagicStavesModule.SpawnImpactBurstLight(transform.position + Vector3.up * 0.8f, new Color(0.95f, 0.12f, 0.18f, 1f), 5.0f, 1.8f, 0.25f);
             MagicStavesModule.DestroyNetworkedOrLocal(gameObject);
@@ -5053,6 +5279,7 @@ namespace NewDualAxesMod
         private void OnDestroy()
         {
             m_alive = false;
+            MagicStavesModule.s_allActivePlainsTotems.Remove(this);
             DetachRainGracefully();
         }
 
@@ -5237,6 +5464,8 @@ namespace NewDualAxesMod
 
         private void Update()
         {
+            if (!m_alive) return;
+
             float dt = Time.deltaTime;
             m_elapsed += dt;
 
@@ -5247,26 +5476,10 @@ namespace NewDualAxesMod
                 m_visualMeshTransform.localPosition = new Vector3(0f, Mathf.Lerp(-0.7f, 0f, riseT), 0f);
             }
 
-            if (!m_stoppedRain && m_elapsed >= Mathf.Max(0.2f, m_duration - 0.65f))
-            {
-                m_stoppedRain = true;
-                if (m_bloodRainPs != null) m_bloodRainPs.Stop(true, ParticleSystemStopBehavior.StopEmitting);
-                if (m_bloodSplashMistPs != null) m_bloodSplashMistPs.Stop(true, ParticleSystemStopBehavior.StopEmitting);
-            }
-
             if (m_orbLight != null)
             {
-                float fade = Mathf.Clamp01((m_duration - m_elapsed) / 0.75f);
-                m_orbLight.intensity = 1.65f * fade;
-            }
-
-            if (m_elapsed >= m_duration)
-            {
-                m_alive = false;
-                DetachRainGracefully();
-                MagicStavesModule.SpawnImpactBurstLight(transform.position + Vector3.up * 0.9f, new Color(1.0f, 0.10f, 0.16f, 1f), 7.5f, 2.2f, 0.35f);
-                MagicStavesModule.DestroyNetworkedOrLocal(gameObject);
-                return;
+                // Subtle rhythmic crimson pulse while active infinitely
+                m_orbLight.intensity = 1.60f + 0.15f * Mathf.Sin(m_elapsed * 2.4f);
             }
 
             m_auraTimer += dt;

@@ -25,11 +25,11 @@ Upon entering the world, choose your Viking's destiny — complete with innate s
 
 | Class | Playstyle & Strengths | Signature Passive | Drawbacks |
 | :--- | :--- | :--- | :--- |
-| **Warrior** | `+25` HP, `+20%` Melee dmg, `+25%` vs Full-HP foes, `-15%` Dodge stamina | **Brave Heart:** `+20%` all dmg below `50%` HP, `+5%` speed, stacking **Bloody Onslaught** (`+4%` attack speed/hit up to `+20%`) | `-10%` Block power, `-25%` Bow/Crossbow dmg, `-50%` Eitr regen |
+| **Warrior** | `+25` HP, `+20%` Melee dmg, `+25%` vs Full-HP foes, `-15%` Dodge stamina | **Brave Heart:** `+20%` all dmg below `50%` HP, `+5%` speed, stacking **Bloody Onslaught** (`+4%` attack speed & `+2.5%` lifesteal per hit up to `+20%` / `12.5%`) | `-10%` Block power, `-25%` Bow/Crossbow dmg, `-50%` Eitr regen |
 | **Knight** | `+50` HP, `+25` Stamina, `+25%` Shield block power, `+30%` Parry riposte dmg | **Unwavering:** `+15` flat Armor, `+10%` move speed with shield, **Steel Bulwark** (`+25%` total armor while blocking) | `-5%` move speed, `+20%` Dodge stamina, `-30` Sneak, `-100%` Eitr regen |
 | **Thief** | `+50` Stamina, `+25%` Knife dmg, `+35%` Combat backstab, `-25%` Sneak & Dodge stamina | **Shadow Ascension:** `+20` Sneak, `+50%` sneak backstab, **Shroud of Night** (`+25%` all dmg, `-25%` stamina use & `+10%` run speed at night) | `-15%` Armor, `-20%` Block power, `-10%` Ranged dmg, `-35%` Eitr regen |
 | **Hunter** | `+25` Stamina, `+20%` Bow/Crossbow/Spear dmg, `+10` Sneak, `-15%` Bow draw stamina | **Falcon's Finesse:** `+15%` Draw/Reload speed, `+5%` move speed, `+50%` sneak bonus, **3 consecutive hits empower the 4th shot for `x2` damage** | `-25%` Melee dmg (except knives & spears), `-15%` Block power, `-35%` Eitr regen |
-| **Sorcerer** | `+50` Base Eitr, `+25%` Eitr regen, `+25%` Skill XP gain | **Archmage:** `+50%` Forsaken Power duration (`7.5 min`), `-25%` Forsaken Power cooldown (`15 min`), **Arcane Flow** (**every 5th spell cast/charge costs `0` Eitr**) | `-35%` Physical weapon dmg, `-30%` Armor, `-50` Carry weight, `0` Eitr regen in Heavy Armor |
+| **Sorcerer** | `+50` Base Eitr, `+25%` Eitr regen, `+25%` Skill XP gain | **Archmage:** `+50%` Forsaken Power duration (`7.5 min` for whole party), `-25%` Forsaken Power cooldown (`15 min`), **Arcane Flow** (**every 5th spell cast/charge costs `0` Eitr**) | `-35%` Physical weapon dmg, `-30%` Armor, `-50` Carry weight, `0` Eitr regen in Heavy Armor |
 | **Beggar** | `+100` Carry weight, `+10` Base HP/Stamina/Eitr, `+5%` all dmg & move speed, `+5` Sneak | **Iron Stomach & Ineptitude:** `+15%` HP/Stamina/Eitr from all foods & `+30%` food duration; `-50%` Skill XP gain | Slower skill leveling |
 
 - **Class Respec:** Purchase the **Scroll of Rebirth** from **Hildir** for `1000 Coins` and right-click it in your inventory.
@@ -46,10 +46,10 @@ No more waiting until Mistlands to play a mage, healer, or dual-wielding berserk
 </p>
 
 1. **Staff of Whispering Wind** (`StaffMeadows`, *Meadows — Elemental Magic*): Assembled at a Workbench from 3 forgotten relics found in abandoned Meadows chests (`PartWindCrystal`, `PartCarvedHandle`, `PartRunicBinding`), and **upgraded exclusively at the Forge of Potential**. Fires piercing wind crescents (`25` Slash dmg `+15` per level, `100` knockback, `21m` range).
-2. **Staff of Purification** (`StaffBlackForest`, *Black Forest — Blood Magic*): Crowned with a glowing shamanic emerald crystal (`50` Eitr, `0%` HP cost). Releases a `10m` healing wave that **cleanses all 6 Combat Injuries and negative debuffs** (*Burning, Poison, Frost, Tar, Lightning, Wet*) **before restoring `+25 / +35 / +45 / +55 HP`** by staff level to all allies in range.
-3. **Censer of Restless Spirit** (`StaffSwamp`, *Swamp — Elemental Magic*): Detonates an `8s` spirit miasma cloud dealing periodic damage and **stripping ALL damage resistances and immunities** from enemies and bosses inside.
+2. **Staff of Purification** (`StaffBlackForest`, *Black Forest — Blood Magic*): Crowned with a glowing shamanic emerald crystal (`50` Eitr, `0%` HP cost). Releases a `10m` healing wave that **cleanses all 6 Combat Injuries and negative debuffs** (*Burning, Poison, Frost, Tar, Lightning, Wet*) **before restoring `+30 / +40 / +50 / +60 HP`** by staff level (`x1.5` stronger — `+45 / +60 / +75 / +90 HP` — inside the Blood Totem's field!).
+3. **Censer of Restless Spirit** (`StaffSwamp`, *Swamp — Elemental Magic*): Detonates an `8s` spirit miasma cloud dealing `5` Poison + `5` Spirit damage (`+5 / +5` per level) once every **`2s`**, **slowing enemy movement by `20%`**, and **stripping ALL damage resistances and immunities** from enemies and bosses inside.
 4. **Thor's Thunder Tuning Staff** (`StaffMountain`, *Mountain — Elemental Magic*): Hold-to-charge lightning railgun (`150 / 300 / 450 / 600` Lightning damage) firing an instant piercing beam through enemies, trees, and structures.
-5. **Staff of Blood Harvest** (`StaffPlains`, *Plains — Blood Magic*): Deploys a 3D Blood Ritual Totem (`15–30s`) summoning a crimson rainstorm: slows enemies by `40%` while granting allies `+10%` move speed, `+50%` HP & Eitr regen, and `-30%` to all stamina/eitr/health action costs.
+5. **Staff of Blood Harvest** (`StaffPlains`, *Plains — Blood Magic*): Fixed `75` Eitr & `50` HP cost. Deploys a **permanent** 3D Blood Ritual Totem (max `1` active totem, replaced on recast) summoning an endless crimson rainstorm: slows enemies by `40%`, amplifies **Staff of Purification** healing by **`x1.5`**, and grants allies `+10%` move speed, `+50%` HP & Eitr regen, and `-30%` to all stamina/eitr/health action costs (buff lingers for **`5s`** after leaving the field).
 
 #### Dual-Wielding War Axes
 
@@ -127,7 +127,7 @@ Removes boss **Vegvisir** runestones from the overworld and dungeons (or optiona
 | `StaffBlackForest` | Staff of Purification | Black Forest AoE Cleanse & Heal Staff (Lvl 1–4) |
 | `StaffSwamp` | Censer of Restless Spirit | Swamp Resistance-Strip Staff (Lvl 1–4) |
 | `StaffMountain` | Thor's Thunder Tuning Staff | Mountain Lightning Railgun (Lvl 1–4) |
-| `StaffPlains` | Staff of Blood Harvest | Plains Blood Totem Staff (Lvl 1–4) |
+| `StaffPlains` | Staff of Blood Harvest | Plains Permanent Blood Totem Staff |
 | `PartWindCrystal` / `PartCarvedHandle` / `PartRunicBinding` | Whispering Wind Relic Parts | Meadows Chest Relics |
 | `ArmorForestShamanHood` / `ArmorForestShamanChest` / `ArmorForestShamanLegs` | Forest Eitr-Weave Set | Black Forest Mage Armor (`+60%` Eitr Regen) |
 | `ArmorWolfMageHood` / `ArmorWolfMageChest` / `ArmorWolfMageLegs` | Frost Embla Set | Mountain Mage Armor (`+100%` Eitr Regen + Frost Resist) |
@@ -157,11 +157,11 @@ Removes boss **Vegvisir** runestones from the overworld and dungeons (or optiona
 
 | Класс | Преимущества | Пассивный навык | Недостатки |
 | :--- | :--- | :--- | :--- |
-| **Воин** | `+25` HP, `+20%` урона вблизи, `+25%` по целям с полным HP, `-15%` выносливости на перекат | **Храброе сердце:** `+20%` всего урона при `<50%` HP, `+5%` скорости, стаки **Кровавого натиска** (`+4%` скорости атаки за удар, до `+20%`) | `-10%` силы блока, `-25%` урона луками/арбалетами, `-50%` регена Эйтра |
+| **Воин** | `+25` HP, `+20%` урона вблизи, `+25%` по целям с полным HP, `-15%` выносливости на перекат | **Храброе сердце:** `+20%` всего урона при `<50%` HP, `+5%` скорости, стаки **Кровавого натиска** (`+4%` скорости атаки и `+2,5%` вампиризма за удар, до `+20%` / `12,5%`) | `-10%` силы блока, `-25%` урона луками/арбалетами, `-50%` регена Эйтра |
 | **Рыцарь** | `+50` HP, `+25` выносливости, `+25%` блока щитом, `+30%` урона по спарированным врагам | **Непоколебимость:** `+15` базовой брони, `+10%` скорости со щитом, **Стальной заслон** (`+25%` к общей броне при поднятом щите) | `-5%` скорости, `+20%` цены переката, `-30` скрытности, `-100%` регена Эйтра |
 | **Вор** | `+50` выносливости, `+25%` урона ножами, `+35%` урона в спину в бою, `-25%` затрат скрытности и переката | **Восхождение в тени:** `+20` скрытности, `+50%` внезапной атаки, **Покров ночи** (`+25%` урона, `-25%` расхода стамины и `+10%` бега ночью) | `-15%` брони, `-20%` силы блока, `-10%` стрелкового урона, `-35%` регена Эйтра |
 | **Охотник** | `+25` выносливости, `+20%` урона луками/арбалетами/копьями, `+10` скрытности, `-15%` натяжения тетивы | **Соколиная сноровка:** `+15%` скорости стрельбы, `+5%` бега, `+50%` внезапной атаки, **после 3 попаданий подряд 4-й выстрел наносит `x2` урона** | `-25%` ближнего урона (кроме ножей и копий), `-15%` блока, `-35%` регена Эйтра |
-| **Колдун** | `+50` базового Эйтра, `+25%` регена Эйтра, `+25%` опыта навыков | **Архимаг:** `+50%` длительности Силы Павших (`7,5 мин.`), `-25%` перезарядки Силы Павших (`15 мин.`), **Поток магии** (**каждый 5-й каст/заряд бесплатный по Эйтру**) | `-35%` физ. оружием, `-30%` брони, `-50` веса, `0` регена Эйтра в тяжёлой броне |
+| **Колдун** | `+50` базового Эйтра, `+25%` регена Эйтра, `+25%` опыта навыков | **Архимаг:** `+50%` длительности Силы Павших (`7,5 мин.` на всех союзников), `-25%` перезарядки Силы Павших (`15 мин.`), **Поток магии** (**каждый 5-й каст/заряд бесплатный по Эйтру**) | `-35%` физ. оружием, `-30%` брони, `-50` веса, `0` регена Эйтра в тяжёлой броне |
 | **Нищий** | `+100` переносимого веса, `+10` HP/стамины/Эйтра, `+5%` урона и бега, `+5` скрытности | **Лужёный желудок и Бездарность:** `+15%` характеристик от любой еды и `+30%` длительности сытости; `-50%` опыта навыков | Медленная прокачка навыков |
 
 - **Смена класса:** купите **«Свиток Перерождения»** у **Хильдир** за `1000 монет` и нажмите по нему ПКМ в инвентаре.
@@ -178,10 +178,10 @@ Removes boss **Vegvisir** runestones from the overworld and dungeons (or optiona
 </p>
 
 1. **Посох Шепчущего Ветра** (`StaffMeadows`, *Луга — Магия стихий*): собирается на верстаке из 3 забытых реликвий в сундуках заброшенных построек Лугов и **прокачивается исключительно в Кузнице возможностей**; выпускает пронзающие серпы сжатого ветра (`25` рассекающего урона `+15` за каждый уровень, отбрасывание `100`, дальность `21 м`).
-2. **Посох Очищения** (`StaffBlackForest`, *Чёрный лес — Магия крови*): шаманский посох с изумрудным кристаллом (`50` Эйтра, `0%` траты HP). Испускает целебную волну радиусом `10 м`, которая **сперва снимает все 6 Боевых Травм и негативные эффекты** (*Горение, Яд, Иней, Смолу, Молнию, Промокание*), **а затем лечит всех союзников в круге на `+25 / +35 / +45 / +55 HP`** по уровню посоха.
-3. **Кадило Беспокойного Духа** (`StaffSwamp`, *Болота — Магия стихий*): взрывает облако миазмов на `8 сек.`, наносящее периодический урон и **полностью срывающее любые сопротивления и иммунитеты** у врагов и боссов.
+2. **Посох Очищения** (`StaffBlackForest`, *Чёрный лес — Магия крови*): шаманский посох с изумрудным кристаллом (`50` Эйтра, `0%` траты HP). Испускает целебную волну радиусом `10 м`, которая **сперва снимает все 6 Боевых Травм и негативные эффекты** (*Горение, Яд, Иней, Смолу, Молнию, Промокание*), **а затем лечит всех союзников в круге на `+30 / +40 / +50 / +60 HP`** по уровню посоха (в поле Кровавого Тотема — **`x1,5`**, т.е. `+45 / +60 / +75 / +90 HP`!).
+3. **Кадило Беспокойного Духа** (`StaffSwamp`, *Болота — Магия стихий*): взрывает облако миазмов на `8 сек.`, наносящее `5` урона ядом и `5` духом (`+5 / +5` за каждый уровень) **каждые `2 сек.`**, **замедляющее бег врагов на `20%`** и **полностью срывающее любые сопротивления и иммунитеты** у врагов и боссов.
 4. **Громовой Камертон Тора** (`StaffMountain`, *Горы — Магия стихий*): заряжаемый молниевый рельсотрон (`150 / 300 / 450 / 600` урона молнией), прошивающий врагов, деревья и постройки навылет.
-5. **Посох Кровавой Жатвы** (`StaffPlains`, *Равнины — Магия крови*): устанавливает 3D-тотем кровавого дождя (`15–30 сек.`): замедляет врагов на `40%`, а игрокам даёт `+10%` скорости, `+50%` регенерации HP и Эйтра и `-30%` ко всем затратам выносливости, эйтра и здоровья.
+5. **Посох Кровавой Жатвы** (`StaffPlains`, *Равнины — Магия крови*): стабильный расход `75` Эйтра и `50` HP. Устанавливает **бесконечный** 3D-тотем кровавого дождя (лимит: `1` активный тотем, переставляется новым кастом): замедляет врагов на `40%`, усиливает исцеление **Посоха Очищения** в **`1,5` раза**, а игрокам даёт `+10%` скорости, `+50%` регенерации HP и Эйтра и `-30%` ко всем затратам (при выходе из поля бафф действует ещё **`5 сек.`**).
 
 #### Парные секиры, Эйтр-броня и 6 блюд на Эйтр
 
@@ -264,7 +264,7 @@ Removes boss **Vegvisir** runestones from the overworld and dungeons (or optiona
 | `StaffBlackForest` | Посох Очищения | Посох снятия дебаффов и лечения (Чёрный лес, ур. 1–4) |
 | `StaffSwamp` | Кадило Беспокойного Духа | Посох снятия сопротивлений (Болота, ур. 1–4) |
 | `StaffMountain` | Громовой Камертон Тора | Молниевый рельсотрон (Горы, ур. 1–4) |
-| `StaffPlains` | Посох Кровавой Жатвы | Посох кровавого тотема (Равнины, ур. 1–4) |
+| `StaffPlains` | Посох Кровавой Жатвы | Посох бесконечного кровавого тотема (Равнины) |
 | `PartWindCrystal` | Осколок Кристалла Ветра | Реликвия для крафта посоха Лугов |
 | `PartCarvedHandle` | Резная Ясеневая Рукоять | Реликвия для крафта посоха Лугов |
 | `PartRunicBinding` | Руническая Перевязь из Рога | Реликвия для крафта посоха Лугов |

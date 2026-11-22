@@ -106,6 +106,7 @@ if ($LASTEXITCODE -eq 0) {
     Compress-Archive -Path $zipFiles -DestinationPath "PathOfTheFallen-$modVer.zip" -CompressionLevel Optimal -Force
     Copy-Item -Force "PathOfTheFallen-$modVer.zip" "PathOfTheFallen.zip"
     Write-Host "Created Thunderstore archives: PathOfTheFallen-$modVer.zip & PathOfTheFallen.zip ($((Get-Item PathOfTheFallen.zip).Length) bytes)"
-} else {
+}
+else {
     Write-Error "Build failed with exit code $LASTEXITCODE"
 }

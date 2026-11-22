@@ -4,6 +4,42 @@ All notable changes to **Path of the Fallen** (`com.coarstal.pathofthefallen`) f
 
 ---
 
+## [1.0.5] — 2026-11-22
+
+### English
+- **Warrior («Brave Heart» — Bloody Onslaught) Buff:** Added **`+2.5%` melee lifesteal per stack** (up to **`12.5%` lifesteal** and `+20%` attack speed at 5 stacks).
+- **Sorcerer («Archmage») Forsaken Power Fix & Party Sharing:**
+  - Fixed a vanilla Valheim 1.0 quirk where `Player.ActivateGuardianPower()` always returned `false` in IL, preventing the **`15 min` (`-25%`) cooldown** from applying! Cooldown now reliably sets to **`15 min`** in both singleplayer and Dedicated Server multiplayer.
+  - Activating Eikthyr or any other Forsaken Power as a **Sorcerer** now grants the full **`7.5 min` (`+50%`) duration to ALL nearby allies** in range (synced via `ZNetView` RPC), not just to the Sorcerer.
+- **3rd Staff — Censer of Restless Spirit (`StaffSwamp`):**
+  - Rebalanced damage per tick to **`5` Poison / `5` Spirit** at Level 1 with **`+5` Poison / `+5` Spirit per upgrade level** (`5/5 -> 10/10 -> 15/15 -> 20/20`), ticking cleanly once every **`2.0 seconds`**.
+  - Enemies inside the Spirit Miasma cloud now suffer **`-20%` movement speed**.
+- **2nd Staff — Staff of Purification (`StaffBlackForest`):**
+  - Increased healing per quality level from `25 / 35 / 45 / 55 HP` to **`30 / 40 / 50 / 60 HP`**.
+- **5th Staff — Staff of Blood Harvest (`StaffPlains`) Rework & Synergy:**
+  - **Infinite Totem Field:** The deployed Blood Ritual Totem now lasts **indefinitely** in its zone until you redeploy it elsewhere (max `1` active totem per caster).
+  - **`5s` Linger Buff:** Leaving the crimson rain field keeps the *Blood Totem Aura* active on players for an additional **`5 seconds`**.
+  - **Synergy with 2nd Staff (`x1.5` Healing):** Casting *Staff of Purification* while empowered by the Blood Totem field increases its healing by **`1.5x`** (`45 / 60 / 75 / 90 HP`).
+  - **Fixed Cast Cost:** Changed resource cost from `% HP` to a stable **`75` Eitr** and **`50` flat HP** (regardless of Blood Magic skill level).
+
+### Русский
+- **Воин («Храброе сердце» — Кровавый натиск):** К каждому стаку *«Кровавого натиска»* добавлено **`+2,5%` вампиризма** от урона ближнего боя (до **`12,5%` вампиризма** и `+20%` скорости атаки на 5 стаках).
+- **Колдун («Архимаг») — исправление отката `15 мин.` и бафф `7,5 мин.` на всю группу:**
+  - Исправлен баг движка Valheim 1.0 (метод `Player.ActivateGuardianPower()` в коде игры всегда возвращает `false`), из-за которого у Колдуна оставался откат `20 мин.` вместо **`15 мин.`** — теперь откат стабильно становится **`15 минут`** и на сервере, и в одиночной игре.
+  - Когда **Колдун** прожимает Эйктюра или любую другую Силу Павших, продлённый бафф на **`7,5 минут`** теперь накладывается **на всех союзников в радиусе раздачи**, а не только на самого Колдуна (с прямой синхронизацией по RPC на сервере).
+- **3-й посох — Кадило Беспокойного Духа (`StaffSwamp`):**
+  - Урон сбалансирован до **`5` ядом / `5` духом** на 1-м уровне и **`+5 / +5` за каждый уровень** (`5/5 -> 10/10 -> 15/15 -> 20/20`), а интервал срабатывания выставлен на **каждые `2 секунды`** единым чистым тиком.
+  - Враги внутри облака духовной миазмы теперь получают **`-20%` к скорости бега**.
+- **2-й посох — Посох Очищения (`StaffBlackForest`):**
+  - Базовое исцеление усилено с `25 / 35 / 45 / 55 HP` до **`30 / 40 / 50 / 60 HP`** по уровню посоха.
+- **5-й посох — Посох Кровавой Жатвы (`StaffPlains`) и синергия со 2-м посохом:**
+  - **Бесконечное поле тотема:** установленный Кровавый Тотем теперь стоит **бесконечно** в области действия, пока вы не переставите его в новое место (лимит: `1` активный тотем).
+  - **Сохранение баффа на `5 сек.`:** при выходе из поля кровавого дождя аура тотема продолжает действовать на игрока ещё **`5 секунд`**.
+  - **Синергия со 2-м посохом (`x1,5` хила):** в поле действия Кровавого Тотема мощность исцеления *Посоха Очищения* увеличивается в **`1,5 раза`** (`45 / 60 / 75 / 90 HP`).
+  - **Стабильный расход:** стоимость установки тотема зафиксирована на **`75` Эйтра** и **`50` ед. здоровья** (вместо процентной траты HP).
+
+---
+
 ## [1.0.4] — 2026-11-21
 
 ### English
