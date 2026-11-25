@@ -30,8 +30,16 @@ namespace WeaponAttributesMod
         public const string CUSTOM_DATA_BOSS_KEY = "WeaponAttributes_Boss";
         public const string CUSTOM_DATA_LEVEL_KEY = "WeaponAttributes_Level";
 
+        internal const string ZDO_MINION_ATTRS = "wa_minion_attrs";
+        internal const string ZDO_MINION_DMG = "wa_minion_dmg";
+        internal const string ZDO_MINION_NOPVP = "wa_minion_nopvp";
+
         public static ConfigEntry<float> BaseAttributeDamage;
         public static ConfigEntry<bool> DualAttributeSplit;
+        public static ConfigEntry<float> BaseDamagePercentPerLevelV2;
+        public static ConfigEntry<float> DualAttributeFactorPerElementV2;
+
+        internal static ItemDrop.ItemData s_activeProjectileSpawnWeapon;
 
         public static readonly Dictionary<string, string[]> BossEnchantMap = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
         {
@@ -92,7 +100,121 @@ namespace WeaponAttributesMod
             { "fader", "TrophyAsksvin" }
         };
 
+        // Standard boss progression global keys (ZoneSystem)
+        public static readonly Dictionary<string, string> BossDefeatedGlobalKeyMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "eikthyr", "defeated_eikthyr" },
+            { "elder", "defeated_gdking" },
+            { "bonemass", "defeated_bonemass" },
+            { "moder", "defeated_dragon" },
+            { "yagluth", "defeated_goblinking" },
+            { "queen", "defeated_queen" },
+            { "fader", "defeated_fader" }
+        };
+
+        private static readonly FieldInfo s_playerTrophiesField = typeof(Player).GetField("m_trophies", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+
+        /// <summary>
+        /// Returns true if the boss has been defeated in the current world OR the player has ever held/picked up its trophy (or has it in inventory).
+        /// </summary>
+        public static bool IsBossUnlockedForEnchanting(Player player, Inventory inv, string bossKey, string bossPrefab)
+        {
+            if (string.IsNullOrEmpty(bossKey)) return false;
+
+            // 1. Check if boss was defeated in this world (ZoneSystem global key)
+            if (ZoneSystem.instance != null)
+            {
+                string globalKey;
+                if (BossDefeatedGlobalKeyMap.TryGetValue(bossKey, out globalKey) && !string.IsNullOrEmpty(globalKey))
+                {
+                    if (ZoneSystem.instance.GetGlobalKey(globalKey))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            if (player == null) return false;
+
+            // 2. Check if player currently holds the Boss Trophy in inventory
+            if (inv != null && !string.IsNullOrEmpty(bossPrefab) && CountInventoryItem(inv, bossPrefab) >= 1)
+            {
+                return true;
+            }
+
+            // 3. Check if player has EVER picked up / held this Boss Trophy (saved in Player.m_trophies & Player.m_knownMaterial)
+            if (!string.IsNullOrEmpty(bossPrefab))
+            {
+                if (s_playerTrophiesField != null)
+                {
+                    HashSet<string> trophySet = s_playerTrophiesField.GetValue(player) as HashSet<string>;
+                    if (trophySet != null && trophySet.Contains(bossPrefab))
+                    {
+                        return true;
+                    }
+                }
+                else
+                {
+                    List<string> trophies = player.GetTrophies();
+                    if (trophies != null && trophies.Contains(bossPrefab))
+                    {
+                        return true;
+                    }
+                }
+
+                if (ObjectDB.instance != null)
+                {
+                    GameObject bObj = ObjectDB.instance.GetItemPrefab(bossPrefab);
+                    ItemDrop bDrop = bObj != null ? bObj.GetComponent<ItemDrop>() : null;
+                    if (bDrop != null && bDrop.m_itemData != null && bDrop.m_itemData.m_shared != null &&
+                        !string.IsNullOrEmpty(bDrop.m_itemData.m_shared.m_name))
+                    {
+                        if (player.IsKnownMaterial(bDrop.m_itemData.m_shared.m_name))
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        public static bool HasEnchantMaterialsInInventory(Inventory inv, string bossKey, string bossPrefab, int targetLevel)
+        {
+            if (inv == null || string.IsNullOrEmpty(bossKey)) return false;
+            string mobPrefab = GetMobTrophyPrefab(bossKey);
+            int mobCount = !string.IsNullOrEmpty(mobPrefab) ? CountInventoryItem(inv, mobPrefab) : 0;
+            if (string.Equals(bossKey, "elder", StringComparison.OrdinalIgnoreCase))
+            {
+                mobCount += CountInventoryItem(inv, "TrophyFrostTroll");
+            }
+
+            if (targetLevel <= 1)
+            {
+                if (string.IsNullOrEmpty(bossPrefab) || CountInventoryItem(inv, bossPrefab) < 1)
+                {
+                    return false;
+                }
+                return mobCount >= 1;
+            }
+
+            int reqMob = GetMobTrophyCountForLevel(targetLevel);
+            return mobCount >= reqMob;
+        }
+
         // Standard boss attributes map by bossKey
+        public static readonly string[] OrderedBossKeys = new string[]
+        {
+            "eikthyr",
+            "elder",
+            "bonemass",
+            "moder",
+            "yagluth",
+            "queen",
+            "fader"
+        };
+
         public static readonly Dictionary<string, string[]> BossKeyAttributesMap = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
         {
             { "eikthyr", new string[] { "lightning" } },
@@ -142,16 +264,26 @@ namespace WeaponAttributesMod
         public static void BindConfigs(ConfigFile config)
         {
             ConfigurationManagerAttributes adminAttr = new ConfigurationManagerAttributes { IsAdminOnly = true };
+            BaseDamagePercentPerLevelV2 = config.Bind(
+                "02. Weapon Attributes",
+                "BaseDamagePercentPerLevelV2",
+                7.0f,
+                new ConfigDescription("Base enchantment bonus per level (Levels 1..5) as % of weapon combat damage before weapon-archetype scaling (default 7% per level => 7%..35% on standard 1H weapons).", null, adminAttr));
+            DualAttributeFactorPerElementV2 = config.Bind(
+                "02. Weapon Attributes",
+                "DualAttributeFactorPerElementV2",
+                0.65f,
+                new ConfigDescription("Multiplier applied to each element on dual-attribute late-game Boss Souls (The Queen, Fader). 0.65 = 65% per element (130% combined total vs 100% single-element Boss Souls).", null, adminAttr));
             BaseAttributeDamage = config.Bind(
                 "02. Weapon Attributes",
                 "BaseAttributeDamage",
                 10f,
-                new ConfigDescription("Amount of additional damage granted by enchantment per tier (Tier 1..5).", null, adminAttr));
+                new ConfigDescription("[Legacy] Unused in v1.0.6+ dynamic weapon-archetype balance.", null, adminAttr));
             DualAttributeSplit = config.Bind(
                 "02. Weapon Attributes",
                 "DualAttributeSplit",
                 false,
-                new ConfigDescription("Split total base attribute damage among multi-attributes or apply base damage to each.", null, adminAttr));
+                new ConfigDescription("[Legacy] Replaced by DualAttributeFactorPerElementV2 in v1.0.6+.", null, adminAttr));
         }
 
         public static void Init(ManualLogSource logger)
@@ -177,6 +309,74 @@ namespace WeaponAttributesMod
         public static string m_upgradingBoss = null;
         public static string m_upgradingLevel = null;
 
+        public static string GetWeaponPrefabName(ItemDrop.ItemData item)
+        {
+            if (item == null) return "";
+            if (item.m_dropPrefab != null && !string.IsNullOrEmpty(item.m_dropPrefab.name))
+            {
+                string raw = item.m_dropPrefab.name;
+                int cloneIdx = raw.IndexOf("(Clone)", StringComparison.OrdinalIgnoreCase);
+                return cloneIdx >= 0 ? raw.Substring(0, cloneIdx).Trim() : raw;
+            }
+            if (item.m_shared != null && !string.IsNullOrEmpty(item.m_shared.m_name))
+            {
+                string tok = item.m_shared.m_name;
+                switch (tok)
+                {
+                    case "$item_staff_shield": return "StaffShield";
+                    case "$item_staff_blackforest": return "StaffBlackForest";
+                    case "$item_staff_plains": return "StaffPlains";
+                    case "$item_staff_meadows": return "StaffMeadows";
+                    case "$item_staff_swamp": return "StaffSwamp";
+                    case "$item_staff_mountain": return "StaffMountain";
+                    case "$item_staff_skeleton": return "StaffSkeleton";
+                    case "$item_staff_redtroll": return "StaffRedTroll";
+                    case "$item_staff_greenroots": return "StaffGreenRoots";
+                    case "$item_staff_iceshards": return "StaffIceShards";
+                    case "$item_staff_lightning": return "StaffLightning";
+                    case "$item_staff_clusterbomb": return "StaffClusterbomb";
+                    case "$item_staff_fireball": return "StaffFireball";
+                    case "$item_axedual_swamp": return "AxeDualSwamp";
+                    case "$item_axedual_plains": return "AxeDualPlains";
+                    case "$item_knife_butcher": return "KnifeButcher";
+                    case "$item_torch": return "Torch";
+                    case "$item_torch_mist": return "TorchMist";
+                    case "$item_scythe": return "Scythe";
+                }
+                if (tok.StartsWith("$item_axe_berzerkr", StringComparison.OrdinalIgnoreCase))
+                {
+                    return "AxeBerzerkr";
+                }
+            }
+            return "";
+        }
+
+        public static bool IsPureSummonStaff(ItemDrop.ItemData item)
+        {
+            string pName = GetWeaponPrefabName(item);
+            return string.Equals(pName, "StaffSkeleton", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(pName, "StaffRedTroll", StringComparison.OrdinalIgnoreCase);
+        }
+
+        public static bool IsHybridSummonStaff(ItemDrop.ItemData item)
+        {
+            string pName = GetWeaponPrefabName(item);
+            return string.Equals(pName, "StaffGreenRoots", StringComparison.OrdinalIgnoreCase);
+        }
+
+        public static float GetRawCombatDamage(ItemDrop.ItemData item, int qualityLevel)
+        {
+            if (item == null || item.m_shared == null) return 0f;
+            int q = qualityLevel > 0 ? qualityLevel : Mathf.Max(1, item.m_quality);
+            HitData.DamageTypes d = item.m_shared.m_damages;
+            if (q > 1)
+            {
+                d.Add(item.m_shared.m_damagesPerLevel, q - 1);
+            }
+            // Sum strictly combat damage types (exclude tree-chop m_chop and rock-mining m_pickaxe!)
+            return Mathf.Max(0f, d.m_damage + d.m_blunt + d.m_slash + d.m_pierce + d.m_fire + d.m_frost + d.m_lightning + d.m_poison + d.m_spirit);
+        }
+
         public static bool IsWeapon(ItemDrop.ItemData item)
         {
             if (item == null || item.m_shared == null) return false;
@@ -187,15 +387,36 @@ namespace WeaponAttributesMod
                               type == ItemDrop.ItemData.ItemType.Bow;
             if (!weaponType) return false;
 
-            // Exclude pure non-damaging utility/support staves (Shield, Purification, Blood Harvest Totem) so players don't waste Boss Trophies
-            string pName = item.m_dropPrefab != null ? item.m_dropPrefab.name : "";
+            // Exclude stackable throwable bombs/consumables, tamed-animal butcher tools, and mining pickaxes
+            if (item.m_shared.m_maxStackSize > 1) return false;
+            if (item.m_shared.m_tamedOnly) return false;
+            if (item.m_shared.m_skillType == Skills.SkillType.Pickaxes) return false;
+
+            string pName = GetWeaponPrefabName(item);
+            // Exclude pure non-damaging defensive/healing/totem staves & utility tools
             if (string.Equals(pName, "StaffShield", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(pName, "StaffBlackForest", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(pName, "StaffPlains", StringComparison.OrdinalIgnoreCase))
+                string.Equals(pName, "StaffPlains", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(pName, "Torch", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(pName, "TorchMist", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(pName, "Lantern", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(pName, "Scythe", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(pName, "KnifeButcher", StringComparison.OrdinalIgnoreCase) ||
+                pName.StartsWith("Tankard", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(pName, "Sparkler", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(pName, "DvergrKey", StringComparison.OrdinalIgnoreCase))
             {
                 return false;
             }
-            return true;
+
+            // Allow summoning staves (Dead Raiser, Trollstav, Staff of the Wild) — summons inherit Boss Soul attributes!
+            if (IsPureSummonStaff(item) || IsHybridSummonStaff(item))
+            {
+                return true;
+            }
+
+            // Exclude any remaining 0-damage non-combat items
+            return GetRawCombatDamage(item, 1) > 0.1f;
         }
 
         public static string GetBossKeyFromItem(ItemDrop.ItemData item)
@@ -403,18 +624,182 @@ namespace WeaponAttributesMod
             item.m_customData[CUSTOM_DATA_LEVEL_KEY] = Mathf.Clamp(level, 1, 5).ToString();
         }
 
-        public static void ApplyEnchantDamage(ItemDrop.ItemData item, ref HitData.DamageTypes dmg)
+        public static float GetWeaponArchetypeFactor(ItemDrop.ItemData item, out float fixedPerLevelBase, out float minEffectiveBaseDamage)
         {
-            string enchantStr = GetAttributeEnchantString(item);
-            if (string.IsNullOrEmpty(enchantStr)) return;
+            fixedPerLevelBase = 0f;
+            minEffectiveBaseDamage = 0f;
+            if (item == null || item.m_shared == null) return 1.0f;
 
-            string[] attrs = enchantStr.Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
-            if (attrs.Length == 0) return;
+            string pName = GetWeaponPrefabName(item);
 
-            int level = Mathf.Clamp(GetEnchantLevel(item), 1, 5);
-            float totalBase = BaseAttributeDamage.Value * (float)level;
-            float perAttr = DualAttributeSplit.Value ? (totalBase / (float)attrs.Length) : totalBase;
+            // 1. Summoning staves (fixed balanced bonus per minion hit)
+            if (string.Equals(pName, "StaffSkeleton", StringComparison.OrdinalIgnoreCase))
+            {
+                fixedPerLevelBase = 3.0f; // +3 / +6 / +9 / +12 / +15 per skeleton attack (up to 4 skeletons)
+                return 1.0f;
+            }
+            if (string.Equals(pName, "StaffRedTroll", StringComparison.OrdinalIgnoreCase))
+            {
+                fixedPerLevelBase = 9.0f; // +9 / +18 / +27 / +36 / +45 on meteor & Summoned Troll slams
+                return 1.0f;
+            }
+            if (string.Equals(pName, "StaffGreenRoots", StringComparison.OrdinalIgnoreCase))
+            {
+                fixedPerLevelBase = 4.0f; // +4 / +8 / +12 / +16 / +20 on seed impact & Root Tentacle strikes
+                return 1.0f;
+            }
 
+            // 2. Custom Magic Staves (`MagicStavesModule`)
+            if (string.Equals(pName, "StaffMountain", StringComparison.OrdinalIgnoreCase))
+            {
+                // 3.0s-4.5s immobile hold-charge sniper railgun (150/300/450/600 Lightning)
+                minEffectiveBaseDamage = 220f;
+                return 1.05f; // -> +16..+81 (Q1), +22..+110 (Q2), +33..+165 (Q3), +44..+220 (Q4)
+            }
+            if (string.Equals(pName, "StaffSwamp", StringComparison.OrdinalIgnoreCase))
+            {
+                // 8s resistance-stripping AoE cloud ticking 5 times (every 2.0s; 10/20/30/40 base per tick)
+                return 1.00f; // -> +1..+3.5 (Q1), +1.5..+7 (Q2), +2..+10.5 (Q3), +3..+14 (Q4) per tick
+            }
+            if (string.Equals(pName, "StaffMeadows", StringComparison.OrdinalIgnoreCase))
+            {
+                // Piercing Wind Blade (25/40/55/70 Slash)
+                return 1.00f; // -> +2..+9 (Q1) up to +5..+25 (Q4)
+            }
+
+            // 3. Vanilla Multi-Pellet / Rapid-Burst / AoE Staves
+            if (string.Equals(pName, "StaffLightning", StringComparison.OrdinalIgnoreCase))
+            {
+                // Dundr: 12 shotgun pellets per shot, each pellet calls GetDamage()!
+                return 0.80f; // -> +1..+5.5 (Q1) / +1.5..+7.5 (Q4) per pellet = +18..+90 full shotgun blast
+            }
+            if (string.Equals(pName, "StaffIceShards", StringComparison.OrdinalIgnoreCase))
+            {
+                // Staff of Frost: rapid machine-gun shards (~4.5 shots/sec)
+                return 0.80f; // -> +1.5..+8.5 (Q1) / +2.5..+13.5 (Q4) per shard
+            }
+            if (string.Equals(pName, "StaffClusterbomb", StringComparison.OrdinalIgnoreCase))
+            {
+                // Staff of Fracturing: splits into 12 cluster bomblets
+                return 0.75f; // -> +1.5..+8 (Q1) / +2..+9.5 (Q4) per bomblet
+            }
+            if (string.Equals(pName, "StaffFireball", StringComparison.OrdinalIgnoreCase))
+            {
+                // Staff of Embers: wide AoE explosion (120 -> 138 base)
+                return 0.85f; // -> +7..+36 (Q1) / +8..+41 (Q4)
+            }
+
+            // 4. Dual-Wield Axes (vanilla Berzerkr + gem variants + modded Swamp/Plains Twin Axes)
+            if (pName.StartsWith("AxeBerzerkr", StringComparison.OrdinalIgnoreCase) ||
+                pName.StartsWith("AxeDual", StringComparison.OrdinalIgnoreCase) ||
+                pName.StartsWith("AxeEarly", StringComparison.OrdinalIgnoreCase))
+            {
+                return 0.80f;
+            }
+
+            // 5. Standard & Heavy Weapon Skill Archetypes
+            Skills.SkillType skill = item.m_shared.m_skillType;
+            bool isTwoHanded = item.m_shared.m_itemType == ItemDrop.ItemData.ItemType.TwoHandedWeapon ||
+                               item.m_shared.m_itemType == ItemDrop.ItemData.ItemType.TwoHandedWeaponLeft;
+
+            if (skill == Skills.SkillType.Knives || skill == Skills.SkillType.Unarmed)
+            {
+                // Very fast combos + 3x-6x backstab / 3x leap attacks (includes Skoll & Hati, Flesh Rippers)
+                return 0.75f;
+            }
+            if (skill == Skills.SkillType.Crossbows)
+            {
+                // 3.5s slow reload single heavy bolt (Arbalest, Ripper)
+                return 1.35f;
+            }
+            if (skill == Skills.SkillType.Bows)
+            {
+                // Compensates for ~45% of bow total base damage residing on Arrows rather than the Bow itself
+                return 1.35f;
+            }
+            if (skill == Skills.SkillType.Polearms)
+            {
+                // Atgeirs (reach + 360° AoE spin secondary)
+                return 0.95f;
+            }
+            if (isTwoHanded && (skill == Skills.SkillType.Swords || skill == Skills.SkillType.Axes))
+            {
+                // Slow, high-commitment Two-Handed Greatswords (Krom, Slayer) & Two-Handed Battleaxes
+                return 1.25f;
+            }
+            if (isTwoHanded && skill == Skills.SkillType.Clubs)
+            {
+                // Slow ground-slam Two-Handed Sledgehammers (Stagbreaker, Iron Sledge, Demolisher)
+                return 1.20f;
+            }
+            if (skill == Skills.SkillType.ElementalMagic || skill == Skills.SkillType.BloodMagic)
+            {
+                return 0.90f;
+            }
+
+            // Standard 1H Swords, 1H Maces/Clubs, 1H Axes, Spears
+            return 1.00f;
+        }
+
+        public static float GetEnchantDamagePerAttribute(ItemDrop.ItemData item, string[] attrs, int level, int qualityLevel)
+        {
+            if (item == null || item.m_shared == null || attrs == null || attrs.Length == 0) return 0f;
+
+            int clampedLevel = Mathf.Clamp(level, 1, 5);
+            float cfgPct = (BaseDamagePercentPerLevelV2 != null ? Mathf.Max(0.5f, BaseDamagePercentPerLevelV2.Value) : 7.0f) * 0.01f;
+            float configScale = cfgPct / 0.07f;
+            float dualFactor = attrs.Length > 1
+                ? (DualAttributeFactorPerElementV2 != null ? Mathf.Clamp(DualAttributeFactorPerElementV2.Value, 0.25f, 1.5f) : 0.65f)
+                : 1.0f;
+
+            float fixedPerLevel;
+            float minEffectiveBase;
+            float archetypeFactor = GetWeaponArchetypeFactor(item, out fixedPerLevel, out minEffectiveBase);
+
+            float rawSingleAttr;
+            if (fixedPerLevel > 0f)
+            {
+                rawSingleAttr = fixedPerLevel * (float)clampedLevel * configScale;
+            }
+            else
+            {
+                float combatBase = Mathf.Max(minEffectiveBase, GetRawCombatDamage(item, qualityLevel));
+                if (combatBase <= 0.1f) return 0f;
+                rawSingleAttr = combatBase * cfgPct * archetypeFactor * (float)clampedLevel;
+            }
+
+            float rawPerAttr = rawSingleAttr * dualFactor;
+
+            // Round >= 10 to clean whole integers, and < 10 to crisp 0.5 steps so every upgrade level (1..5) visibly advances
+            float rounded;
+            if (rawPerAttr >= 10f)
+            {
+                rounded = Mathf.Round(rawPerAttr);
+            }
+            else
+            {
+                rounded = Mathf.Round(rawPerAttr * 2f) * 0.5f;
+                float minFloor = 0.5f * (float)clampedLevel;
+                if (rounded < minFloor)
+                {
+                    rounded = minFloor;
+                }
+            }
+            return rounded;
+        }
+
+        public static string FormatEnchantValue(float val)
+        {
+            if (Mathf.Abs(val - Mathf.Round(val)) < 0.05f)
+            {
+                return Mathf.RoundToInt(val).ToString();
+            }
+            return val.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        public static void AddEnchantAttributesToDamageTypes(string[] attrs, float perAttr, ref HitData.DamageTypes dmg)
+        {
+            if (attrs == null || perAttr <= 0f) return;
             for (int i = 0; i < attrs.Length; i++)
             {
                 string attr = attrs[i].Trim().ToLower();
@@ -439,6 +824,68 @@ namespace WeaponAttributesMod
                         dmg.m_damage += perAttr;
                         break;
                 }
+            }
+        }
+
+        public static void ApplyEnchantDamage(ItemDrop.ItemData item, ref HitData.DamageTypes dmg)
+        {
+            ApplyEnchantDamage(item, -1, ref dmg);
+        }
+
+        public static void ApplyEnchantDamage(ItemDrop.ItemData item, int qualityLevel, ref HitData.DamageTypes dmg)
+        {
+            if (!IsActive || item == null) return;
+            // Pure 0-damage summon staves (Dead Raiser, Trollstav) imbue their spawned minions/meteor rather than direct staff swings
+            if (IsPureSummonStaff(item)) return;
+
+            string enchantStr = GetAttributeEnchantString(item);
+            if (string.IsNullOrEmpty(enchantStr)) return;
+
+            string[] attrs = enchantStr.Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+            if (attrs.Length == 0) return;
+
+            int level = Mathf.Clamp(GetEnchantLevel(item), 1, 5);
+            float perAttr = GetEnchantDamagePerAttribute(item, attrs, level, qualityLevel);
+            AddEnchantAttributesToDamageTypes(attrs, perAttr, ref dmg);
+        }
+
+        private static readonly FieldInfo s_charNViewField = typeof(Character).GetField("m_nview", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+
+        internal static ZNetView GetCharacterNetView(Character ch)
+        {
+            if (ch == null) return null;
+            if (s_charNViewField != null)
+            {
+                ZNetView nv = s_charNViewField.GetValue(ch) as ZNetView;
+                if (nv != null) return nv;
+            }
+            return ch.GetComponent<ZNetView>();
+        }
+
+        public static void TryImbueSummonedCharacter(Character spawnedChar, ItemDrop.ItemData sourceWeapon)
+        {
+            if (!IsActive || spawnedChar == null || sourceWeapon == null) return;
+            string enchantStr = GetAttributeEnchantString(sourceWeapon);
+            if (string.IsNullOrEmpty(enchantStr)) return;
+
+            string[] attrs = enchantStr.Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+            if (attrs.Length == 0) return;
+
+            int level = Mathf.Clamp(GetEnchantLevel(sourceWeapon), 1, 5);
+            float perAttr = GetEnchantDamagePerAttribute(sourceWeapon, attrs, level, sourceWeapon.m_quality);
+            if (perAttr <= 0f) return;
+
+            ZNetView nv = GetCharacterNetView(spawnedChar);
+            if (nv == null || !nv.IsValid()) return;
+            ZDO zdo = nv.GetZDO();
+            if (zdo == null) return;
+
+            zdo.Set(ZDO_MINION_ATTRS, enchantStr);
+            zdo.Set(ZDO_MINION_DMG, perAttr);
+            string pName = GetWeaponPrefabName(sourceWeapon);
+            if (string.Equals(pName, "StaffRedTroll", StringComparison.OrdinalIgnoreCase))
+            {
+                zdo.Set(ZDO_MINION_NOPVP, true);
             }
         }
 
@@ -518,40 +965,174 @@ namespace WeaponAttributesMod
     [HarmonyPatch(typeof(ItemDrop.ItemData), "GetDamage", new Type[] { typeof(int), typeof(float) })]
     public static class Patch_ItemData_GetDamage
     {
-        public static void Postfix(ItemDrop.ItemData __instance, ref HitData.DamageTypes __result)
+        public static void Postfix(ItemDrop.ItemData __instance, int quality, ref HitData.DamageTypes __result)
         {
-            WeaponAttributesPlugin.ApplyEnchantDamage(__instance, ref __result);
+            WeaponAttributesPlugin.ApplyEnchantDamage(__instance, quality, ref __result);
         }
     }
 
     [HarmonyPatch(typeof(ItemDrop.ItemData), "GetTooltip", new Type[] { typeof(ItemDrop.ItemData), typeof(int), typeof(bool), typeof(float), typeof(int), typeof(bool) })]
     public static class Patch_ItemData_GetTooltip
     {
-        public static void Postfix(ItemDrop.ItemData item, ref string __result)
+        public static void Postfix(ItemDrop.ItemData item, int qualityLevel, ref string __result)
         {
-            if (item == null) return;
+            if (item == null || !WeaponAttributesPlugin.IsActive) return;
             string enchantStr = WeaponAttributesPlugin.GetAttributeEnchantString(item);
             if (string.IsNullOrEmpty(enchantStr)) return;
 
             string[] attrs = enchantStr.Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
             if (attrs.Length == 0) return;
 
-            int enchantLevel = WeaponAttributesPlugin.GetEnchantLevel(item);
-            float totalBase = WeaponAttributesPlugin.BaseAttributeDamage.Value * (float)Mathf.Clamp(enchantLevel, 1, 5);
-            float perAttr = WeaponAttributesPlugin.DualAttributeSplit.Value ? (totalBase / (float)attrs.Length) : totalBase;
+            int enchantLevel = Mathf.Clamp(WeaponAttributesPlugin.GetEnchantLevel(item), 1, 5);
+            float perAttr = WeaponAttributesPlugin.GetEnchantDamagePerAttribute(item, attrs, enchantLevel, qualityLevel);
+            if (perAttr <= 0f) return;
+
+            string suffix = "";
+            if (WeaponAttributesPlugin.IsPureSummonStaff(item))
+            {
+                suffix = WeaponAttributesLocalization.Loc("$wa_summon_suffix");
+            }
+            else if (WeaponAttributesPlugin.IsHybridSummonStaff(item))
+            {
+                suffix = WeaponAttributesLocalization.Loc("$wa_roots_suffix");
+            }
 
             StringBuilder sb = new StringBuilder();
             sb.Append("\n<color=#A020F0>");
             sb.Append(string.Format(WeaponAttributesLocalization.Loc("$wa_tooltip_header"), enchantLevel));
             sb.Append("</color>");
+            string formattedVal = WeaponAttributesPlugin.FormatEnchantValue(perAttr);
             for (int i = 0; i < attrs.Length; i++)
             {
                 string attrName = WeaponAttributesPlugin.GetAttributeNameLocalized(attrs[i]);
-                sb.Append(string.Format("\n  {0}: <color=#00FFFF>+{1:0}</color>", attrName, perAttr));
+                sb.Append(string.Format("\n  {0}{1}: <color=#00FFFF>+{2}</color>", attrName, suffix, formattedVal));
             }
 
             // Append at the very bottom (below movement speed modifier, etc.)
             __result += sb.ToString();
+        }
+    }
+
+    [HarmonyPatch(typeof(SpawnAbility), "SetupAoe", new Type[] { typeof(Character), typeof(Vector3) })]
+    public static class Patch_SpawnAbility_SetupAoe
+    {
+        private static readonly FieldInfo s_weaponField = typeof(SpawnAbility).GetField("m_weapon", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+
+        public static void Postfix(SpawnAbility __instance, Character owner)
+        {
+            if (__instance == null || owner == null || s_weaponField == null || !WeaponAttributesPlugin.IsActive) return;
+            ItemDrop.ItemData weapon = s_weaponField.GetValue(__instance) as ItemDrop.ItemData;
+            if (weapon != null)
+            {
+                WeaponAttributesPlugin.TryImbueSummonedCharacter(owner, weapon);
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(SpawnAbility), "SetupProjectile", new Type[] { typeof(Projectile), typeof(Vector3) })]
+    public static class Patch_SpawnAbility_SetupProjectile
+    {
+        private static readonly FieldInfo s_spawnWeaponField = typeof(SpawnAbility).GetField("m_weapon", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+        private static readonly FieldInfo s_projWeaponField = typeof(Projectile).GetField("m_weapon", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+
+        public static void Postfix(SpawnAbility __instance, Projectile projectile)
+        {
+            if (__instance == null || projectile == null || s_spawnWeaponField == null || !WeaponAttributesPlugin.IsActive) return;
+            ItemDrop.ItemData weapon = s_spawnWeaponField.GetValue(__instance) as ItemDrop.ItemData;
+            if (weapon == null) return;
+
+            if (s_projWeaponField != null)
+            {
+                s_projWeaponField.SetValue(projectile, weapon);
+            }
+
+            string enchantStr = WeaponAttributesPlugin.GetAttributeEnchantString(weapon);
+            if (!string.IsNullOrEmpty(enchantStr))
+            {
+                string[] attrs = enchantStr.Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+                int level = Mathf.Clamp(WeaponAttributesPlugin.GetEnchantLevel(weapon), 1, 5);
+                float perAttr = WeaponAttributesPlugin.GetEnchantDamagePerAttribute(weapon, attrs, level, weapon.m_quality);
+                WeaponAttributesPlugin.AddEnchantAttributesToDamageTypes(attrs, perAttr, ref projectile.m_damage);
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(Aoe), "Setup", new Type[] { typeof(Character), typeof(Vector3), typeof(float), typeof(HitData), typeof(ItemDrop.ItemData), typeof(ItemDrop.ItemData) })]
+    public static class Patch_Aoe_Setup_SummonMeteor
+    {
+        public static void Postfix(Aoe __instance, HitData hitData, ItemDrop.ItemData item)
+        {
+            if (__instance == null || hitData != null || item == null || !WeaponAttributesPlugin.IsActive) return;
+            if (!WeaponAttributesPlugin.IsPureSummonStaff(item)) return;
+
+            string enchantStr = WeaponAttributesPlugin.GetAttributeEnchantString(item);
+            if (string.IsNullOrEmpty(enchantStr)) return;
+
+            string[] attrs = enchantStr.Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+            int level = Mathf.Clamp(WeaponAttributesPlugin.GetEnchantLevel(item), 1, 5);
+            float perAttr = WeaponAttributesPlugin.GetEnchantDamagePerAttribute(item, attrs, level, item.m_quality);
+            WeaponAttributesPlugin.AddEnchantAttributesToDamageTypes(attrs, perAttr, ref __instance.m_damage);
+        }
+    }
+
+    [HarmonyPatch(typeof(Projectile), "SpawnOnHit", new Type[] { typeof(GameObject), typeof(Collider), typeof(Vector3) })]
+    public static class Patch_Projectile_SpawnOnHit_SummonContext
+    {
+        private static readonly FieldInfo s_projWeaponField = typeof(Projectile).GetField("m_weapon", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+
+        public static void Prefix(Projectile __instance)
+        {
+            if (__instance != null && s_projWeaponField != null && WeaponAttributesPlugin.IsActive)
+            {
+                WeaponAttributesPlugin.s_activeProjectileSpawnWeapon = s_projWeaponField.GetValue(__instance) as ItemDrop.ItemData;
+            }
+        }
+
+        public static void Postfix()
+        {
+            WeaponAttributesPlugin.s_activeProjectileSpawnWeapon = null;
+        }
+    }
+
+    [HarmonyPatch(typeof(Character), "Awake", new Type[0])]
+    public static class Patch_Character_Awake_SummonImbue
+    {
+        public static void Postfix(Character __instance)
+        {
+            if (__instance != null && WeaponAttributesPlugin.s_activeProjectileSpawnWeapon != null && WeaponAttributesPlugin.IsActive)
+            {
+                WeaponAttributesPlugin.TryImbueSummonedCharacter(__instance, WeaponAttributesPlugin.s_activeProjectileSpawnWeapon);
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(Character), "Damage", new Type[] { typeof(HitData) })]
+    public static class Patch_Character_Damage_SummonMinionEnchant
+    {
+        public static void Prefix(Character __instance, HitData hit)
+        {
+            if (!WeaponAttributesPlugin.IsActive || __instance == null || hit == null) return;
+            Character attacker = hit.GetAttacker();
+            if (attacker == null || attacker.IsPlayer()) return;
+
+            ZNetView nv = WeaponAttributesPlugin.GetCharacterNetView(attacker);
+            if (nv == null || !nv.IsValid()) return;
+            ZDO zdo = nv.GetZDO();
+            if (zdo == null) return;
+
+            float perAttr = zdo.GetFloat(WeaponAttributesPlugin.ZDO_MINION_DMG, 0f);
+            if (perAttr <= 0f) return;
+
+            if (zdo.GetBool(WeaponAttributesPlugin.ZDO_MINION_NOPVP, false) && __instance.IsPlayer())
+            {
+                return;
+            }
+
+            string enchantStr = zdo.GetString(WeaponAttributesPlugin.ZDO_MINION_ATTRS, "");
+            if (string.IsNullOrEmpty(enchantStr)) return;
+
+            string[] attrs = enchantStr.Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+            WeaponAttributesPlugin.AddEnchantAttributesToDamageTypes(attrs, perAttr, ref hit.m_damage);
         }
     }
 
@@ -629,6 +1210,7 @@ namespace WeaponAttributesMod
     public static class CustomEnchantingTable
     {
         public static GameObject m_enchantingTablePrefab = null;
+        public static Sprite m_tableIcon = null;
 
         public static void RegisterCustomTable()
         {
@@ -679,29 +1261,55 @@ namespace WeaponAttributesMod
                     col.enabled = false;
                 }
 
-                // Hide original Artisan Table visual meshes without destroying components that Piece/WearNTear might reference
+                // Remove _GhostOnly from cloned Artisan Table so placement ghost never activates Artisan Table visuals
+                Transform ghostOnly = custom.transform.Find("_GhostOnly");
+                if (ghostOnly != null)
+                {
+                    UnityEngine.Object.DestroyImmediate(ghostOnly.gameObject);
+                }
+
+                // Hide original Artisan Table visual meshes & clear MeshFilters without destroying components that Piece/WearNTear might reference
                 foreach (Renderer rnd in custom.GetComponentsInChildren<Renderer>(true))
                 {
                     if (rnd != null && rnd.gameObject != custom)
                     {
                         rnd.enabled = false;
+                        MeshFilter mf = rnd.GetComponent<MeshFilter>();
+                        if (mf != null)
+                        {
+                            mf.sharedMesh = null;
+                        }
                     }
                 }
 
-                // Setup CraftingStation & WearNTear references
+                // Load custom 128x128 icon from embedded resource first so BOTH CraftingStation.m_icon AND Piece.m_icon get it!
+                Sprite customIcon = LoadEmbeddedSprite("BossSoulTableIcon.png");
+                if (customIcon != null)
+                {
+                    m_tableIcon = customIcon;
+                }
+
+                // Setup CraftingStation & WearNTear references (including m_icon used inside the Station UI & Hammer required-station slot!)
                 CraftingStation station = custom.GetComponent<CraftingStation>();
                 if (station != null)
                 {
                     station.m_name = "$wa_piece_table";
                     station.m_rangeBuild = 10f;
                     station.m_useDistance = 2.8f;
+                    if (customIcon != null)
+                    {
+                        station.m_icon = customIcon;
+                    }
+                }
+
+                Piece basePiece = custom.GetComponent<Piece>();
+                if (basePiece != null && customIcon != null)
+                {
+                    basePiece.m_icon = customIcon;
                 }
 
                 // Load our custom Blender 3D Model ("Boss Soul Enchanting Table"), colliders, and purple glow effects
                 BuildCustomBlenderModel(custom, standardShader, pieceLayer);
-
-                // Load custom 128x128 icon from embedded resource
-                Sprite customIcon = LoadEmbeddedSprite("BossSoulTableIcon.png");
 
                 // Configure piece in Jotunn
                 PieceConfig config = new PieceConfig();
@@ -2075,7 +2683,131 @@ namespace WeaponAttributesMod
     {
         public static Dictionary<string, Recipe> m_weaponEnchantRecipes = new Dictionary<string, Recipe>();
         private static MethodInfo m_addRecipeToListMethod;
+        private static FieldInfo m_availableRecipesField = typeof(InventoryGui).GetField("m_availableRecipes", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+        private static FieldInfo m_recipeListBaseSizeField = typeof(InventoryGui).GetField("m_recipeListBaseSize", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
         public const string RECIPE_PREFIX = "Recipe_Enchant_";
+
+        public static string GetShortBossLabel(string bossKey)
+        {
+            if (string.IsNullOrEmpty(bossKey)) return "";
+            switch (bossKey.Trim().ToLower())
+            {
+                case "eikthyr": return WeaponAttributesLocalization.Loc("$wa_boss_short_eikthyr");
+                case "elder": return WeaponAttributesLocalization.Loc("$wa_boss_short_elder");
+                case "bonemass": return WeaponAttributesLocalization.Loc("$wa_boss_short_bonemass");
+                case "moder": return WeaponAttributesLocalization.Loc("$wa_boss_short_moder");
+                case "yagluth": return WeaponAttributesLocalization.Loc("$wa_boss_short_yagluth");
+                case "queen": return WeaponAttributesLocalization.Loc("$wa_boss_short_queen");
+                case "fader": return WeaponAttributesLocalization.Loc("$wa_boss_short_fader");
+                default: return bossKey;
+            }
+        }
+
+        private static void DecorateLastAddedRecipeRow(InventoryGui gui, ItemDrop.ItemData weapon, string bossKey, int currentEnchantLevel, int targetLevel, bool canCraft)
+        {
+            if (gui == null || gui.m_recipeListRoot == null || weapon == null || weapon.m_shared == null) return;
+            int childCount = gui.m_recipeListRoot.childCount;
+            if (childCount <= 0) return;
+
+            Transform row = gui.m_recipeListRoot.GetChild(childCount - 1);
+            if (row == null) return;
+
+            string weaponName = Localization.instance.Localize(weapon.m_shared.m_name);
+            string baseHex = WeaponAttributesPlugin.GetBossEnchantColor(bossKey, null);
+            if (string.IsNullOrEmpty(baseHex)) baseHex = "#FFD700";
+
+            string listHex = baseHex;
+            if (string.Equals(bossKey, "elder", StringComparison.OrdinalIgnoreCase)) listHex = "#A8B2A8";
+            else if (string.Equals(bossKey, "fader", StringComparison.OrdinalIgnoreCase)) listHex = "#D87A38";
+
+            // When missing items/station level, render the ENTIRE row (icon, weapon name, boss tag, quality badge) in unmistakable muted gray!
+            string tagHex = canCraft ? listHex : "#787878";
+            Color disabledTextCol = new Color(0.50f, 0.50f, 0.50f, 0.90f);
+
+            Transform iconTr = row.Find("icon");
+            if (iconTr != null && !canCraft)
+            {
+                Image iconImg = iconTr.GetComponent<Image>();
+                if (iconImg != null)
+                {
+                    // Valheim's Custom/GuiScroll UI shader uses Color(1, 0, 1, 0) as its desaturate-to-grayscale flag!
+                    iconImg.color = new Color(1f, 0f, 1f, 0f);
+                }
+            }
+
+            Transform nameTr = row.Find("name");
+            if (nameTr != null)
+            {
+                TMP_Text nameText = nameTr.GetComponent<TMP_Text>();
+                if (nameText != null)
+                {
+                    nameText.color = canCraft ? Color.white : disabledTextCol;
+                    string displayedWeaponName = canCraft ? weaponName : string.Format("<color=#808080>{0}</color>", weaponName);
+                    if (targetLevel <= 1)
+                    {
+                        string shortBoss = GetShortBossLabel(bossKey);
+                        nameText.text = string.Format("{0} <color={1}>[{2}]</color>", displayedWeaponName, tagHex, shortBoss);
+                    }
+                    else
+                    {
+                        nameText.text = string.Format("{0} <color={1}>(+{2})</color>", displayedWeaponName, tagHex, targetLevel);
+                    }
+                }
+            }
+
+            Transform qualTr = row.Find("QualityLevel");
+            if (qualTr != null)
+            {
+                TMP_Text qualText = qualTr.GetComponent<TMP_Text>();
+                if (qualText != null)
+                {
+                    qualText.gameObject.SetActive(true);
+                    qualText.textWrappingMode = TMPro.TextWrappingModes.NoWrap;
+                    qualText.overflowMode = TMPro.TextOverflowModes.Overflow;
+                    if (!canCraft)
+                    {
+                        qualText.color = new Color(0.55f, 0.55f, 0.55f, 0.88f);
+                    }
+
+                    if (currentEnchantLevel > 0)
+                    {
+                        // Right-align "4+1" inside the icon's right edge and slightly scale font down so "+1" grows LEFT over the icon and NEVER overlaps the weapon name!
+                        qualText.enableAutoSizing = false;
+                        qualText.fontSize = Mathf.Max(11f, Mathf.Round(qualText.fontSize * 0.78f));
+                        qualText.alignment = TextAlignmentOptions.TopRight;
+
+                        RectTransform qualRect = qualTr as RectTransform;
+                        RectTransform iconRect = iconTr as RectTransform;
+                        if (qualRect != null && iconRect != null)
+                        {
+                            float iconRightX = iconTr.localPosition.x + iconRect.rect.xMax;
+                            float iconTopY = iconTr.localPosition.y + iconRect.rect.yMax;
+                            float boxW = 34f;
+                            float boxH = 18f;
+                            qualRect.anchorMin = new Vector2(0.5f, 0.5f);
+                            qualRect.anchorMax = new Vector2(0.5f, 0.5f);
+                            qualRect.pivot = new Vector2(1f, 1f);
+                            qualRect.sizeDelta = new Vector2(boxW, boxH);
+                            qualRect.localPosition = new Vector3(iconRightX + 1f, iconTopY + 2f, qualTr.localPosition.z);
+                        }
+
+                        RectTransform nameRect = nameTr as RectTransform;
+                        if (nameRect != null)
+                        {
+                            nameRect.anchoredPosition = nameRect.anchoredPosition + new Vector2(4f, 0f);
+                            nameRect.sizeDelta = nameRect.sizeDelta - new Vector2(4f, 0f);
+                        }
+
+                        string plusHex = canCraft ? baseHex : "#787878";
+                        qualText.text = string.Format("{0}<color={1}>+{2}</color>", weapon.m_quality, plusHex, currentEnchantLevel);
+                    }
+                    else
+                    {
+                        qualText.text = weapon.m_quality.ToString();
+                    }
+                }
+            }
+        }
 
         public static bool IsOurRecipe(Recipe recipe)
         {
@@ -2139,8 +2871,19 @@ namespace WeaponAttributesMod
 
         private static Recipe GetOrCreateEnchantRecipe(ItemDrop.ItemData weapon, string bossKey, string bossPrefab, int targetLevel, CraftingStation station)
         {
-            if (weapon == null || weapon.m_dropPrefab == null || string.IsNullOrEmpty(bossKey)) return null;
-            string weaponPrefab = weapon.m_dropPrefab.name;
+            if (weapon == null || string.IsNullOrEmpty(bossKey)) return null;
+            GameObject dropPrefabObj = weapon.m_dropPrefab;
+            if (dropPrefabObj == null && ObjectDB.instance != null)
+            {
+                string resolvedName = WeaponAttributesPlugin.GetWeaponPrefabName(weapon);
+                if (!string.IsNullOrEmpty(resolvedName))
+                {
+                    dropPrefabObj = ObjectDB.instance.GetItemPrefab(resolvedName);
+                }
+            }
+            if (dropPrefabObj == null) return null;
+
+            string weaponPrefab = dropPrefabObj.name;
             string identifier = (targetLevel <= 1 && !string.IsNullOrEmpty(bossPrefab)) ? bossPrefab : bossKey;
             string recipeKey = string.Format("{0}__{1}__lvl{2}", weaponPrefab, identifier, targetLevel);
 
@@ -2152,7 +2895,7 @@ namespace WeaponAttributesMod
                 return rec;
             }
 
-            ItemDrop weaponDrop = weapon.m_dropPrefab.GetComponent<ItemDrop>();
+            ItemDrop weaponDrop = dropPrefabObj.GetComponent<ItemDrop>();
             if (weaponDrop == null) return null;
 
             rec = ScriptableObject.CreateInstance<Recipe>();
@@ -2185,6 +2928,16 @@ namespace WeaponAttributesMod
                 return;
             }
 
+            // Ensure custom Enchanting Table icon is always shown in the station UI header (never the cloned Artisan Table icon)
+            if (CustomEnchantingTable.m_tableIcon != null)
+            {
+                currentStation.m_icon = CustomEnchantingTable.m_tableIcon;
+                if (__instance.m_craftingStationIcon != null)
+                {
+                    __instance.m_craftingStationIcon.sprite = CustomEnchantingTable.m_tableIcon;
+                }
+            }
+
             if (m_addRecipeToListMethod == null)
             {
                 m_addRecipeToListMethod = typeof(InventoryGui).GetMethod("AddRecipeToList", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
@@ -2193,11 +2946,12 @@ namespace WeaponAttributesMod
 
             bool inCraftTab = __instance.InCraftTab();
             bool inUpgradeTab = __instance.InUpradeTab();
+            int currentStationLevel = currentStation.GetLevel(true);
 
-            List<ItemDrop.ItemData> allItems = player.GetInventory().GetAllItems();
+            Inventory inv = player.GetInventory();
+            List<ItemDrop.ItemData> allItems = inv.GetAllItems();
             List<ItemDrop.ItemData> unenchantedWeapons = new List<ItemDrop.ItemData>();
             List<ItemDrop.ItemData> upgradableEnchantedWeapons = new List<ItemDrop.ItemData>();
-            Dictionary<string, ItemDrop.ItemData> distinctBossTrophies = new Dictionary<string, ItemDrop.ItemData>(StringComparer.OrdinalIgnoreCase);
 
             for (int i = 0; i < allItems.Count; i++)
             {
@@ -2214,68 +2968,98 @@ namespace WeaponAttributesMod
                         upgradableEnchantedWeapons.Add(it);
                     }
                 }
-
-                string bossKeyCandidate = WeaponAttributesPlugin.GetBossKeyFromItem(it);
-                if (!string.IsNullOrEmpty(bossKeyCandidate))
-                {
-                    string bossPrefab;
-                    if (it.m_dropPrefab != null)
-                    {
-                        bossPrefab = it.m_dropPrefab.name;
-                    }
-                    else if (!WeaponAttributesPlugin.BossKeyToTrophyPrefab.TryGetValue(bossKeyCandidate, out bossPrefab))
-                    {
-                        bossPrefab = bossKeyCandidate;
-                    }
-
-                    if (!distinctBossTrophies.ContainsKey(bossPrefab))
-                    {
-                        distinctBossTrophies[bossPrefab] = it;
-                    }
-                }
             }
 
-            // 1. Initial enchanting for unenchanted weapons (Level 1) -> Craft Tab (InCraftTab)
-            if (inCraftTab && distinctBossTrophies.Count > 0)
+            bool addedAny = false;
+
+            // 1. Initial enchanting for unenchanted weapons in inventory (Level 1) -> Craft Tab (InCraftTab)
+            // Only show bosses that were defeated in this world OR whose head/trophy the player has held at least once!
+            if (inCraftTab && unenchantedWeapons.Count > 0)
             {
-                for (int i = 0; i < unenchantedWeapons.Count; i++)
+                List<string> unlockedBossKeys = new List<string>();
+                for (int b = 0; b < WeaponAttributesPlugin.OrderedBossKeys.Length; b++)
                 {
-                    ItemDrop.ItemData weapon = unenchantedWeapons[i];
-                    foreach (KeyValuePair<string, ItemDrop.ItemData> kvp in distinctBossTrophies)
+                    string bKey = WeaponAttributesPlugin.OrderedBossKeys[b];
+                    string bPrefab;
+                    if (WeaponAttributesPlugin.BossKeyToTrophyPrefab.TryGetValue(bKey, out bPrefab))
                     {
-                        string bossPrefab = kvp.Key;
-                        ItemDrop.ItemData bossItem = kvp.Value;
-                        string bossKey = WeaponAttributesPlugin.GetBossKeyFromItem(bossItem);
-                        Recipe rec = GetOrCreateEnchantRecipe(weapon, bossKey, bossPrefab, 1, currentStation);
-                        if (rec != null)
+                        if (WeaponAttributesPlugin.IsBossUnlockedForEnchanting(player, inv, bKey, bPrefab))
                         {
-                            bool canCraft = player.HaveRequirements(rec, false, 1, 1);
+                            unlockedBossKeys.Add(bKey);
+                        }
+                    }
+                }
+
+                for (int pass = 0; pass < 2; pass++)
+                {
+                    bool wantCraftable = (pass == 0);
+                    for (int i = 0; i < unenchantedWeapons.Count; i++)
+                    {
+                        ItemDrop.ItemData weapon = unenchantedWeapons[i];
+                        for (int b = 0; b < unlockedBossKeys.Count; b++)
+                        {
+                            string bossKey = unlockedBossKeys[b];
+                            string bossPrefab;
+                            if (!WeaponAttributesPlugin.BossKeyToTrophyPrefab.TryGetValue(bossKey, out bossPrefab))
+                            {
+                                continue;
+                            }
+
+                            Recipe rec = GetOrCreateEnchantRecipe(weapon, bossKey, bossPrefab, 1, currentStation);
+                            if (rec == null) continue;
+
+                            bool hasItems = WeaponAttributesPlugin.HasEnchantMaterialsInInventory(inv, bossKey, bossPrefab, 1);
+                            bool canCraft = hasItems && (currentStationLevel >= 1);
+                            if (canCraft != wantCraftable) continue;
+
                             m_addRecipeToListMethod.Invoke(__instance, new object[] { player, rec, weapon, canCraft });
+                            DecorateLastAddedRecipeRow(__instance, weapon, bossKey, 0, 1, canCraft);
+                            addedAny = true;
                         }
                     }
                 }
             }
 
             // 2. Enchantment upgrades for already enchanted weapons (Level 2..5) -> Upgrade Tab (InUpradeTab)
-            if (inUpgradeTab)
+            if (inUpgradeTab && upgradableEnchantedWeapons.Count > 0)
             {
-                for (int i = 0; i < upgradableEnchantedWeapons.Count; i++)
+                for (int pass = 0; pass < 2; pass++)
                 {
-                    ItemDrop.ItemData weapon = upgradableEnchantedWeapons[i];
-                    string bossKey = WeaponAttributesPlugin.GetEnchantBossKey(weapon);
-                    if (string.IsNullOrEmpty(bossKey)) continue;
-
-                    int currentLevel = WeaponAttributesPlugin.GetEnchantLevel(weapon);
-                    int targetLevel = currentLevel + 1;
-                    if (targetLevel <= 5)
+                    bool wantCraftable = (pass == 0);
+                    for (int i = 0; i < upgradableEnchantedWeapons.Count; i++)
                     {
-                        Recipe rec = GetOrCreateEnchantRecipe(weapon, bossKey, null, targetLevel, currentStation);
-                        if (rec != null)
+                        ItemDrop.ItemData weapon = upgradableEnchantedWeapons[i];
+                        string bossKey = WeaponAttributesPlugin.GetEnchantBossKey(weapon);
+                        if (string.IsNullOrEmpty(bossKey)) continue;
+
+                        int currentLevel = WeaponAttributesPlugin.GetEnchantLevel(weapon);
+                        int targetLevel = currentLevel + 1;
+                        if (targetLevel <= 5)
                         {
-                            bool canCraft = player.HaveRequirements(rec, false, targetLevel, 1);
+                            Recipe rec = GetOrCreateEnchantRecipe(weapon, bossKey, null, targetLevel, currentStation);
+                            if (rec == null) continue;
+
+                            bool hasItems = WeaponAttributesPlugin.HasEnchantMaterialsInInventory(inv, bossKey, null, targetLevel);
+                            bool canCraft = hasItems && (currentStationLevel >= targetLevel);
+                            if (canCraft != wantCraftable) continue;
+
                             m_addRecipeToListMethod.Invoke(__instance, new object[] { player, rec, weapon, canCraft });
+                            DecorateLastAddedRecipeRow(__instance, weapon, bossKey, currentLevel, targetLevel, canCraft);
+                            addedAny = true;
                         }
                     }
+                }
+            }
+
+            // Update scroll container vertical height after appending custom recipes in Postfix so all rows scroll smoothly!
+            if (addedAny && __instance.m_recipeListRoot != null && m_availableRecipesField != null)
+            {
+                IList avail = m_availableRecipesField.GetValue(__instance) as IList;
+                if (avail != null)
+                {
+                    float baseSize = m_recipeListBaseSizeField != null ? (float)m_recipeListBaseSizeField.GetValue(__instance) : 0f;
+                    float targetHeight = Mathf.Max(baseSize, (float)avail.Count * __instance.m_recipeListSpace);
+                    __instance.m_recipeListRoot.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, targetHeight);
                 }
             }
         }
@@ -2354,7 +3138,20 @@ namespace WeaponAttributesMod
                 if (weapon != null)
                 {
                     string weaponName = Localization.instance.Localize(weapon.m_shared.m_name);
-                    string bossDisplayName = (foundBossTrophy != null) ? Localization.instance.Localize(foundBossTrophy.m_shared.m_name) : bossKey;
+                    string bossDisplayName = Patch_InventoryGui_UpdateRecipeList.GetShortBossLabel(bossKey);
+                    if (foundBossTrophy != null && foundBossTrophy.m_shared != null)
+                    {
+                        bossDisplayName = Localization.instance.Localize(foundBossTrophy.m_shared.m_name);
+                    }
+                    else if (!string.IsNullOrEmpty(bossPrefab) && ObjectDB.instance != null)
+                    {
+                        GameObject bObj = ObjectDB.instance.GetItemPrefab(bossPrefab);
+                        ItemDrop bDrop = bObj != null ? bObj.GetComponent<ItemDrop>() : null;
+                        if (bDrop != null && bDrop.m_itemData != null && bDrop.m_itemData.m_shared != null)
+                        {
+                            bossDisplayName = Localization.instance.Localize(bDrop.m_itemData.m_shared.m_name);
+                        }
+                    }
 
                     if (targetLevel <= 1)
                     {
@@ -2402,8 +3199,17 @@ namespace WeaponAttributesMod
                     if (attrs != null && attrs.Length > 0)
                     {
                         int previewLevel = Mathf.Clamp(targetLevel, 1, 5);
-                        float totalBase = WeaponAttributesPlugin.BaseAttributeDamage.Value * (float)previewLevel;
-                        float perAttr = WeaponAttributesPlugin.DualAttributeSplit.Value ? (totalBase / (float)attrs.Length) : totalBase;
+                        float perAttr = WeaponAttributesPlugin.GetEnchantDamagePerAttribute(weapon, attrs, previewLevel, quality);
+                        string formattedVal = WeaponAttributesPlugin.FormatEnchantValue(perAttr);
+                        string suffix = "";
+                        if (WeaponAttributesPlugin.IsPureSummonStaff(weapon))
+                        {
+                            suffix = WeaponAttributesLocalization.Loc("$wa_summon_suffix");
+                        }
+                        else if (WeaponAttributesPlugin.IsHybridSummonStaff(weapon))
+                        {
+                            suffix = WeaponAttributesLocalization.Loc("$wa_roots_suffix");
+                        }
 
                         StringBuilder sb = new StringBuilder();
                         sb.Append("\n<color=yellow>");
@@ -2412,7 +3218,7 @@ namespace WeaponAttributesMod
                         for (int a = 0; a < attrs.Length; a++)
                         {
                             string attrName = WeaponAttributesPlugin.GetAttributeNameLocalized(attrs[a]);
-                            sb.Append(string.Format("\n  {0}: <color=#00FFFF>+{1:0}</color>", attrName, perAttr));
+                            sb.Append(string.Format("\n  {0}{1}: <color=#00FFFF>+{2}</color>", attrName, suffix, formattedVal));
                         }
                         __instance.m_recipeDecription.text = localizedTooltip + "\n" + sb.ToString();
                     }

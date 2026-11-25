@@ -37,6 +37,7 @@ namespace CoarstalsEnemyOverhaul
         public static ConfigEntry<float> ChampionDamageMultiplier;
         public static ConfigEntry<float> ChampionScaleMultiplier;
         public static ConfigEntry<float> ChampionStaggerResistance;
+        public static ConfigEntry<bool> ChampionOnlyKnightCanBlock;
         public static ConfigEntry<int> SmallChampionTrophyCount;
         public static ConfigEntry<int> LargeChampionTrophyCount;
         public static ConfigEntry<int> ChampionLootMultiplier;
@@ -145,6 +146,12 @@ namespace CoarstalsEnemyOverhaul
                 "ChampionStaggerDamageReduction",
                 0.55f,
                 new ConfigDescription("Stagger buildup reduction on Named Champions so they cannot be trivially stunlocked (0.55 = -55% stagger taken).", null, adminAttr));
+
+            ChampionOnlyKnightCanBlock = config.Bind(
+                secChamp,
+                "ChampionOnlyKnightCanBlock",
+                true,
+                new ConfigDescription("When RP Classes is enabled, only the Knight class can block or parry a Champion's attacks; any other class attempting to block or parry has their stamina completely drained and guard shattered.", null, adminAttr));
 
             SmallChampionTrophyCount = config.Bind(
                 secChamp,

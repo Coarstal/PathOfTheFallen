@@ -105,6 +105,7 @@ namespace CoarstalsRPClasses
         public static ConfigEntry<int> SorcererFreeCastEveryN;
         public static ConfigEntry<float> SorcererPhysicalWeaponPenalty;
         public static ConfigEntry<float> SorcererArmorPenalty;
+        public static ConfigEntry<float> SorcererBlockPowerPenalty;
         public static ConfigEntry<float> SorcererCarryWeightPenalty;
         public static ConfigEntry<float> SorcererHeavyArmorEitrPenalty;
 
@@ -208,9 +209,9 @@ namespace CoarstalsRPClasses
                 new ConfigDescription("Duration in seconds of 'Brave Heart' melee onslaught stacks (5s).", null, adminAttr));
             WarriorBlockPowerPenalty = config.Bind(
                 "01. RP Classes - 1. Warrior",
-                "BlockPowerPenalty",
-                0.10f,
-                new ConfigDescription("Block power penalty (0.10 = -10%).", null, adminAttr));
+                "BlockPowerPenaltyV2",
+                0.35f,
+                new ConfigDescription("Block power penalty (0.35 = -35%).", null, adminAttr));
             WarriorRangedDamagePenalty = config.Bind(
                 "01. RP Classes - 1. Warrior",
                 "RangedDamagePenalty",
@@ -454,6 +455,11 @@ namespace CoarstalsRPClasses
                 "ArmorPenaltyV2",
                 0.30f,
                 new ConfigDescription("Total armor penalty (0.30 = -30%).", null, adminAttr));
+            SorcererBlockPowerPenalty = config.Bind(
+                "01. RP Classes - 5. Sorcerer",
+                "BlockPowerPenaltyV2",
+                0.55f,
+                new ConfigDescription("Block power penalty (0.55 = -55%).", null, adminAttr));
             SorcererCarryWeightPenalty = config.Bind(
                 "01. RP Classes - 5. Sorcerer",
                 "CarryWeightPenaltyV2",
@@ -758,6 +764,7 @@ namespace CoarstalsRPClasses
                     AppendSectionHeader(sb, "#FF6E6E", Loc("$rp_ui_debuffs"), true);
                     AppendBadLine(sb, Loc("$rp_stat_phys_dmg"), "-" + Pct(SorcererPhysicalWeaponPenalty.Value) + "%");
                     AppendBadLine(sb, Loc("$rp_stat_total_armor"), "-" + Pct(SorcererArmorPenalty.Value) + "%");
+                    AppendBadLine(sb, Loc("$rp_stat_block_power"), "-" + Pct(SorcererBlockPowerPenalty.Value) + "%");
                     AppendBadLine(sb, Loc("$rp_stat_carry_weight"), "-" + Mathf.RoundToInt(SorcererCarryWeightPenalty.Value));
                     AppendBadLine(sb, Loc("$rp_stat_heavy_armor_eitr"), "-" + Pct(SorcererHeavyArmorEitrPenalty.Value) + "%", false);
                     break;

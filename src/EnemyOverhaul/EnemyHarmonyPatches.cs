@@ -7,6 +7,7 @@ using TMPro;
 using UnityEngine;
 using Jotunn.Entities;
 using Jotunn.Managers;
+using CoarstalsRPClasses;
 
 namespace CoarstalsEnemyOverhaul
 {
@@ -122,6 +123,58 @@ namespace CoarstalsEnemyOverhaul
         public static class Patch_Humanoid_BlockAttack_Tracker
         {
             public static bool CurrentHitWasSuccessfullyBlocked;
+            private static readonly MethodInfo s_getCurrentBlockerMethod = typeof(Humanoid).GetMethod("GetCurrentBlocker", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+
+            public static bool Prefix(Humanoid __instance, HitData hit, Character attacker, ref bool __result)
+            {
+                if (__instance == null || hit == null) return true;
+
+                Player defender = __instance as Player;
+                if (defender == null || defender.IsDead()) return true;
+
+                // Only applies when RP Classes is active and Champion guard-shatter rule is enabled
+                if (!EnemyOverhaulConfig.ChampionOnlyKnightCanBlock.Value || !RPClassesModule.IsActive) return true;
+
+                Character realAttacker = attacker != null ? attacker : hit.GetAttacker();
+                if (realAttacker == null || realAttacker.IsPlayer() || !ChampionSystem.IsChampion(realAttacker)) return true;
+
+                // Check if the hit is actually coming from the front arc while the player has a blocker (same precondition as vanilla BlockAttack)
+                if (Vector3.Dot(hit.m_dir, defender.transform.forward) > 0f) return true;
+
+                ItemDrop.ItemData blocker = (s_getCurrentBlockerMethod != null)
+                    ? (s_getCurrentBlockerMethod.Invoke(defender, null) as ItemDrop.ItemData)
+                    : null;
+                if (blocker == null) return true;
+
+                // Knights can block & parry Champions normally!
+                if (RPPlayerClassManager.GetPlayerClass(defender) == RPClassType.Knight) return true;
+
+                // Non-Knight tried to block or parry a Champion -> GUARANTEED 100% stamina wipe + guard break stagger + unblocked hit!
+                CurrentHitWasSuccessfullyBlocked = false;
+                float curStam = defender.GetStamina();
+                if (curStam > 0f)
+                {
+                    defender.UseStamina(curStam + 1f);
+                }
+                if (defender == Player.m_localPlayer && Hud.instance != null)
+                {
+                    Hud.instance.StaminaBarEmptyFlash();
+                }
+
+                if (blocker.m_shared != null && blocker.m_shared.m_blockEffect != null)
+                {
+                    blocker.m_shared.m_blockEffect.Create(hit.m_point, Quaternion.identity, null, 1f, -1);
+                }
+
+                defender.Stagger(hit.m_dir);
+                if (defender == Player.m_localPlayer)
+                {
+                    defender.Message(MessageHud.MessageType.Center, EnemyLocalization.Loc("$ceo_champ_guard_shattered"), 0, null);
+                }
+
+                __result = false;
+                return false;
+            }
 
             public static void Postfix(Humanoid __instance, bool __result)
             {

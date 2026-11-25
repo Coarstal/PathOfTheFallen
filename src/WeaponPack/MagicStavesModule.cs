@@ -65,6 +65,8 @@ namespace NewDualAxesMod
 
         public static ConfigEntry<float> PlainsEitrCost;
         public static ConfigEntry<float> PlainsFlatHealthCost;
+        public static ConfigEntry<float> PlainsTotemDuration;
+        public static ConfigEntry<float> PlainsTotemExtraDurationPerLevel;
         public static ConfigEntry<float> PlainsBuffLingerSeconds;
         public static ConfigEntry<float> PlainsPurificationHealMultiplier;
         public static ConfigEntry<string> PlainsStaffRecipe;
@@ -231,12 +233,14 @@ namespace NewDualAxesMod
 
             PlainsEitrCost = config.Bind(secPlains, "EitrCostV2", 75f, new ConfigDescription("Fixed Eitr cost per Blood Totem deployment (75 Eitr).", null, adminAttr));
             PlainsFlatHealthCost = config.Bind(secPlains, "FlatHealthCostV2", 50f, new ConfigDescription("Fixed flat Health cost per Blood Totem deployment (50 HP).", null, adminAttr));
+            PlainsTotemDuration = config.Bind(secPlains, "TotemDurationSecondsV2", 15f, new ConfigDescription("Base lifetime of the deployed Blood Totem field in seconds at level 1 (15s).", null, adminAttr));
+            PlainsTotemExtraDurationPerLevel = config.Bind(secPlains, "ExtraSecondsPerLevelV2", 15f, new ConfigDescription("Additional Blood Totem duration in seconds per upgrade level (+15s/lvl => 15 / 30 / 45 / 60s).", null, adminAttr));
             PlainsBuffLingerSeconds = config.Bind(secPlains, "FieldBuffLingerSeconds", 5.0f, new ConfigDescription("Duration in seconds that the Blood Totem aura persists on players after stepping out of the totem's field (default 5s).", null, adminAttr));
             PlainsPurificationHealMultiplier = config.Bind(secPlains, "PurificationHealMultiplier", 1.5f, new ConfigDescription("Healing multiplier applied to Staff of Purification (2nd staff) when cast inside or empowered by the Blood Totem field (default 1.5x).", null, adminAttr));
             PlainsStaffRecipe = config.Bind(
                 secPlains,
-                "RecipeV2",
-                "BlackMetal:25:0,GoblinTotem:1:0,LinenThread:15:0,LoxPelt:4:0",
+                "RecipeV3",
+                "BlackMetal:25:10,GoblinTotem:1:1,LinenThread:15:6,LoxPelt:4:2",
                 new ConfigDescription("Forge level 4 recipe.", null, adminAttr)
             );
         }
@@ -271,7 +275,7 @@ namespace NewDualAxesMod
                 { "item_staff_mountain_eitrhold", "Eitr drain" },
                 { "item_staff_mountain_chargetime", "Charge time" },
                 { "item_staff_plains", "Staff of Blood Harvest" },
-                { "item_staff_plains_desc", "A Black Metal ritual staff that deploys a permanent Blood Ritual Totem (max 1 active totem; replaced on recast) summoning a crimson rainstorm. Inside the blood rain, enemies move 40% slower, Staff of Purification healing is 1.5x stronger, and players gain +10% move speed, +50% HP & Eitr regen, and -30% to all action costs (persists 5s after leaving)." },
+                { "item_staff_plains_desc", "A Black Metal ritual staff that deploys a Blood Ritual Totem (15/30/45/60s by level, max 1 active totem) summoning a crimson rainstorm. Inside the blood rain, the aura has no timer (and lingers 5s after leaving), enemies move 40% slower, Staff of Purification healing is 1.5x stronger, and players gain +10% move speed, +50% HP & Eitr regen, and -30% to all action costs." },
 
                 { "se_plains_bloodfield_name", "Blood Totem Aura" },
                 { "se_plains_bloodfield_tooltip", "Movement speed +10%\nHealth regeneration +50%\nEitr regeneration +50%\nAll stamina, eitr & health action costs -30%\nStaff of Purification healing x1.5\nEnemies in field slowed by 40%" },
@@ -301,7 +305,7 @@ namespace NewDualAxesMod
                 { "item_staff_mountain_eitrhold", "Расход эйтра" },
                 { "item_staff_mountain_chargetime", "Время зарядки" },
                 { "item_staff_plains", "Посох Кровавой Жатвы" },
-                { "item_staff_plains_desc", "Ритуальный посох Равнин на магии крови (75 Эйтра и 50 HP, лимит: 1 постоянный тотем). Призывает бесконечный кровавый дождь в области тотема: замедляет врагов на 40%, усиливает исцеление Посоха Очищения в 1,5 раза, ускоряет игроков на 10%, снижает затраты на 30% и повышает регенерацию HP и эйтра на 50% (бафф держится ещё 5 сек. после выхода из поля)." },
+                { "item_staff_plains_desc", "Ритуальный посох Равнин на магии крови (75 Эйтра и 50 HP, 15/30/45/60 сек. по уровню, лимит: 1 тотем). Призывает кровавый дождь в области тотема: пока вы внутри круга, бафф действует без таймера (а при выходе длится ещё 5 сек.), враги замедлены на 40%, исцеление Посоха Очищения усилено в 1,5 раза, а игроки получают +10% скорости, -30% всех затрат и +50% регенерации HP и эйтра." },
 
                 { "se_plains_bloodfield_name", "Поле Кровавого Тотема" },
                 { "se_plains_bloodfield_tooltip", "Скорость передвижения: +10%\nВосстановление здоровья: +50%\nВосстановление эйтра: +50%\nВсе затраты выносливости, эйтра и здоровья: -30%\nИсцеление Посоха Очищения: x1,5\nВраги в поле замедлены на 40%" },
@@ -517,7 +521,7 @@ namespace NewDualAxesMod
                     maxDurability: 220f
                 );
 
-                // Plains Staff — Blood Ritual Totem Staff (Blood Magic, Forge lvl 4, Infinite Active Totem, Fixed 75 Eitr + 50 HP cost, Max 1 Totem)
+                // Plains Staff — Blood Ritual Totem Staff (Blood Magic, Forge lvl 4, 15/30/45/60s by level, Fixed 75 Eitr + 50 HP cost, Max 1 Totem)
                 RegisterMagicStaff(
                     prefabName: PlainsStaffPrefab,
                     donorName: staffDonor,
@@ -548,7 +552,7 @@ namespace NewDualAxesMod
                     poisonDmg: 0f,
                     poisonPerLvl: 0f,
                     isBowDrawRailgun: false,
-                    maxQuality: 1,
+                    maxQuality: 4,
                     attackForce: 25f,
                     toolTier: 4,
                     blockPower: 48f,
@@ -1189,24 +1193,18 @@ namespace NewDualAxesMod
             if (s_plainsTotemZonePrefab == null)
             {
                 s_plainsTotemZonePrefab = CreateNetworkedSpellPrefab("CWP_Zone_PlainsHarvestTotem", false, false);
-                ZNetView totemZnv = s_plainsTotemZonePrefab.GetComponent<ZNetView>();
-                if (totemZnv != null)
-                {
-                    // Persistent ZDO so the infinite Blood Totem stays in the world until replaced or session ends!
-                    totemZnv.m_persistent = true;
-                }
                 s_plainsTotemZonePrefab.AddComponent<PlainsBloodHarvestTotemZone>();
                 PrefabManager.Instance.AddPrefab(s_plainsTotemZonePrefab);
             }
 
             if (s_plainsBuffStatusEffect == null)
             {
-                SE_Stats se = ScriptableObject.CreateInstance<SE_Stats>();
+                SE_PlainsBloodFieldAura se = ScriptableObject.CreateInstance<SE_PlainsBloodFieldAura>();
                 se.name = "SE_PlainsBloodFieldBuff";
                 se.m_name = "$se_plains_bloodfield_name";
                 se.m_tooltip = "$se_plains_bloodfield_tooltip";
                 se.m_icon = (s_plainsTotemIcon != null) ? s_plainsTotemIcon : s_plainsIcon;
-                se.m_ttl = PlainsBuffLingerSeconds != null ? Mathf.Max(1f, PlainsBuffLingerSeconds.Value) : 5.0f;
+                se.m_ttl = 0f; // Timerless while inside field; switches to 5s countdown once outside!
                 // +10% move speed, +50% HP regen, +50% Eitr regen, -30% ALL stamina action costs!
                 se.m_speedModifier = 0.10f;
                 se.m_swimSpeedModifier = 0.10f;
@@ -2741,16 +2739,22 @@ namespace NewDualAxesMod
             SEMan sem = player.GetSEMan();
             if (sem != null && s_plainsBuffStatusEffect != null)
             {
-                s_plainsBuffStatusEffect.m_ttl = linger;
                 StatusEffect active = sem.GetStatusEffect(s_plainsBuffStatusHash);
                 if (active != null)
                 {
-                    active.m_ttl = linger;
+                    // While inside the circle: m_ttl = 0f so HUD displays NO countdown timer at all!
+                    active.m_ttl = 0f;
                     active.ResetTime();
                 }
                 else
                 {
-                    sem.AddStatusEffect(s_plainsBuffStatusEffect, true, 0, 0f);
+                    s_plainsBuffStatusEffect.m_ttl = 0f;
+                    StatusEffect added = sem.AddStatusEffect(s_plainsBuffStatusEffect, true, 0, 0f);
+                    if (added != null)
+                    {
+                        added.m_ttl = 0f;
+                        added.ResetTime();
+                    }
                 }
             }
         }
@@ -5073,9 +5077,43 @@ namespace NewDualAxesMod
     }
 
     // ========================================================================================================
-    // 5. PLAINS STAFF SPELL: Infinite Blood Ritual Totem Field (Enemy -40% Move Speed, Player +10% Move Speed,
-    //    -30% All Stamina/Eitr/Health Action Costs, +50% HP & Eitr Regen, x1.5 Staff 2 Healing, 5s Linger on Exit, Max 1 Active Totem)
+    // 5. PLAINS STAFF SPELL: Blood Ritual Totem Field (15/30/45/60s by level, Enemy -40% Move Speed,
+    //    Player +10% Move Speed, -30% All Action Costs, +50% HP & Eitr Regen, x1.5 Staff 2 Healing,
+    //    Timerless Buff Inside Field -> 5s Countdown on Exit, Max 1 Active Totem)
     // ========================================================================================================
+    public class SE_PlainsBloodFieldAura : SE_Stats
+    {
+        public override void UpdateStatusEffect(float dt)
+        {
+            base.UpdateStatusEffect(dt);
+            if (m_character == null) return;
+
+            bool insideCircle = MagicStavesModule.IsPositionInsideAnyActivePlainsTotem(m_character.transform.position);
+            if (insideCircle)
+            {
+                // Keep buff completely timerless (no number under icon) while standing inside the circle,
+                // and keep resource-discount registry alive!
+                if (m_ttl != 0f) m_ttl = 0f;
+                ResetTime();
+
+                float lingerKeep = MagicStavesModule.PlainsBuffLingerSeconds != null
+                    ? Mathf.Max(0.5f, MagicStavesModule.PlainsBuffLingerSeconds.Value)
+                    : 5.0f;
+                MagicStavesModule.s_plainsBuffedPlayers[m_character] = Time.time + lingerKeep;
+            }
+            else if (m_ttl <= 0f)
+            {
+                // The exact moment the player steps out of the circle (or the totem expires), start the 5s countdown timer!
+                float linger = MagicStavesModule.PlainsBuffLingerSeconds != null
+                    ? Mathf.Max(0.5f, MagicStavesModule.PlainsBuffLingerSeconds.Value)
+                    : 5.0f;
+                m_ttl = linger;
+                ResetTime();
+                MagicStavesModule.s_plainsBuffedPlayers[m_character] = Time.time + linger;
+            }
+        }
+    }
+
     public class PlainsTotemDeployProjectile : MonoBehaviour, IProjectile
     {
         public void Setup(Character owner, Vector3 velocity, float hitNoise, HitData hitData, ItemDrop.ItemData item, ItemDrop.ItemData ammo)
@@ -5084,20 +5122,31 @@ namespace NewDualAxesMod
             Destroy(gameObject);
         }
 
+        public static float GetTotemDurationForQuality(int itemQuality)
+        {
+            int q = Mathf.Max(1, itemQuality);
+            float baseDur = MagicStavesModule.PlainsTotemDuration != null ? MagicStavesModule.PlainsTotemDuration.Value : 15f;
+            float extraPerLvl = MagicStavesModule.PlainsTotemExtraDurationPerLevel != null ? MagicStavesModule.PlainsTotemExtraDurationPerLevel.Value : 15f;
+            return baseDur + (q - 1) * extraPerLvl;
+        }
+
         public string GetTooltipString(int itemQuality)
         {
+            float dur = GetTotemDurationForQuality(itemQuality);
             float linger = MagicStavesModule.PlainsBuffLingerSeconds != null ? MagicStavesModule.PlainsBuffLingerSeconds.Value : 5f;
             float healMult = MagicStavesModule.PlainsPurificationHealMultiplier != null ? MagicStavesModule.PlainsPurificationHealMultiplier.Value : 1.5f;
             if (MagicStavesModule.IsRussianLanguageSelected())
             {
                 return string.Format(
-                    "\n<color=#ff4455>Поле Тотема (бесконечно, лимит: 1 тотем, бафф +{0:F0} сек. после выхода):\n• Враги: -40% к скорости передвижения\n• Посох Очищения: исцеление x{1:0.#}\n• Игроки: +10% к скорости, +50% к регенерации HP и эйтра, -30% ко всем расходам</color>",
+                    "\n<color=#ff4455>Поле Тотема ({0:F0} сек., лимит: 1 тотем, бафф без таймера внутри и +{1:F0} сек. при выходе):\n• Враги: -40% к скорости передвижения\n• Посох Очищения: исцеление x{2:0.#}\n• Игроки: +10% к скорости, +50% к регенерации HP и эйтра, -30% ко всем расходам</color>",
+                    dur,
                     linger,
                     healMult
                 );
             }
             return string.Format(
-                "\n<color=#ff4455>Totem Aura (infinite, max 1 totem, +{0:F0}s buff after leaving):\n• Enemies: -40% movement speed\n• Staff of Purification: healing x{1:0.#}\n• Players: +10% move speed, +50% HP & Eitr regen, -30% to all action costs</color>",
+                "\n<color=#ff4455>Totem Aura ({0:F0} s, max 1 totem, timerless inside & +{1:F0}s after leaving):\n• Enemies: -40% movement speed\n• Staff of Purification: healing x{2:0.#}\n• Players: +10% move speed, +50% HP & Eitr regen, -30% to all action costs</color>",
+                dur,
                 linger,
                 healMult
             );
@@ -5142,6 +5191,9 @@ namespace NewDualAxesMod
                 totemRot = Quaternion.LookRotation(-faceDir.normalized, Vector3.up);
             }
 
+            int quality = (weapon != null) ? Mathf.Max(1, weapon.m_quality) : 1;
+            float duration = GetTotemDurationForQuality(quality);
+
             // Spawn ZNetScene-networked Totem Zone prefab so ALL co-op players see the 3D Totem + Crimson Rainstorm AND receive the buff!
             GameObject totemGo;
             if (MagicStavesModule.s_plainsTotemZonePrefab != null)
@@ -5159,7 +5211,7 @@ namespace NewDualAxesMod
             PlainsBloodHarvestTotemZone totem = totemGo.GetComponent<PlainsBloodHarvestTotemZone>();
             if (totem != null)
             {
-                totem.Init(owner);
+                totem.Init(owner, duration);
                 MagicStavesModule.RegisterDeployedTotem(owner, totem);
             }
 
@@ -5177,6 +5229,7 @@ namespace NewDualAxesMod
         private bool m_alive = true;
         private Character m_owner;
         private long m_ownerPlayerId;
+        private float m_duration = 15f;
         private float m_radius = MagicStavesModule.PlainsTotemZoneRadius;
         private float m_elapsed;
         private float m_auraTimer;
@@ -5187,6 +5240,7 @@ namespace NewDualAxesMod
         private Vector3 m_orbWorldOffset = new Vector3(0f, 0.98f, 0f);
         private ParticleSystem m_bloodRainPs;
         private ParticleSystem m_bloodSplashMistPs;
+        private bool m_stoppedRain;
         private Light m_orbLight;
 
         private void Awake()
@@ -5201,6 +5255,7 @@ namespace NewDualAxesMod
                 if (m_nview.GetZDO() != null)
                 {
                     m_ownerPlayerId = m_nview.GetZDO().GetLong(MagicStavesModule.ZdoKeyOwnerPid, 0L);
+                    m_duration = m_nview.GetZDO().GetFloat(MagicStavesModule.ZdoKeyDuration, MagicStavesModule.PlainsTotemDuration != null ? MagicStavesModule.PlainsTotemDuration.Value : 15f);
                 }
                 if (!m_nview.IsOwner())
                 {
@@ -5212,30 +5267,21 @@ namespace NewDualAxesMod
             }
         }
 
-        private void Start()
-        {
-            // Also ensure reloaded persistent ZDO totems build visuals cleanly on the ZDO owner
-            if (!m_visualsBuilt && m_alive)
-            {
-                if (m_nview != null && m_nview.IsValid() && m_nview.GetZDO() != null && m_ownerPlayerId == 0L)
-                {
-                    m_ownerPlayerId = m_nview.GetZDO().GetLong(MagicStavesModule.ZdoKeyOwnerPid, 0L);
-                }
-                BuildTotem3DVisuals();
-                RefreshFieldAura();
-            }
-        }
-
-        public void Init(Character owner)
+        public void Init(Character owner, float durationSeconds)
         {
             if (m_nview == null) m_nview = GetComponent<ZNetView>();
             m_alive = true;
             m_owner = owner;
+            m_duration = Mathf.Max(1f, durationSeconds);
             Player p = owner as Player;
             m_ownerPlayerId = (p != null) ? p.GetPlayerID() : 0L;
-            if (m_nview != null && m_nview.IsValid() && m_nview.GetZDO() != null && m_ownerPlayerId != 0L)
+            if (m_nview != null && m_nview.IsValid() && m_nview.GetZDO() != null)
             {
-                m_nview.GetZDO().Set(MagicStavesModule.ZdoKeyOwnerPid, m_ownerPlayerId);
+                m_nview.GetZDO().Set(MagicStavesModule.ZdoKeyDuration, m_duration);
+                if (m_ownerPlayerId != 0L)
+                {
+                    m_nview.GetZDO().Set(MagicStavesModule.ZdoKeyOwnerPid, m_ownerPlayerId);
+                }
             }
             m_charMask = LayerMask.GetMask(new string[] { "character", "character_net", "character_ghost", "hitbox", "character_noenv" });
             MagicStavesModule.s_allActivePlainsTotems.Add(this);
@@ -5476,10 +5522,27 @@ namespace NewDualAxesMod
                 m_visualMeshTransform.localPosition = new Vector3(0f, Mathf.Lerp(-0.7f, 0f, riseT), 0f);
             }
 
+            if (!m_stoppedRain && m_elapsed >= Mathf.Max(0.2f, m_duration - 0.65f))
+            {
+                m_stoppedRain = true;
+                if (m_bloodRainPs != null) m_bloodRainPs.Stop(true, ParticleSystemStopBehavior.StopEmitting);
+                if (m_bloodSplashMistPs != null) m_bloodSplashMistPs.Stop(true, ParticleSystemStopBehavior.StopEmitting);
+            }
+
             if (m_orbLight != null)
             {
-                // Subtle rhythmic crimson pulse while active infinitely
-                m_orbLight.intensity = 1.60f + 0.15f * Mathf.Sin(m_elapsed * 2.4f);
+                float fade = Mathf.Clamp01((m_duration - m_elapsed) / 0.75f);
+                m_orbLight.intensity = 1.65f * fade;
+            }
+
+            if (m_elapsed >= m_duration)
+            {
+                m_alive = false;
+                MagicStavesModule.s_allActivePlainsTotems.Remove(this);
+                DetachRainGracefully();
+                MagicStavesModule.SpawnImpactBurstLight(transform.position + Vector3.up * 0.9f, new Color(1.0f, 0.10f, 0.16f, 1f), 7.5f, 2.2f, 0.35f);
+                MagicStavesModule.DestroyNetworkedOrLocal(gameObject);
+                return;
             }
 
             m_auraTimer += dt;

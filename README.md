@@ -25,11 +25,11 @@ Upon entering the world, choose your Viking's destiny — complete with innate s
 
 | Class | Playstyle & Strengths | Signature Passive | Drawbacks |
 | :--- | :--- | :--- | :--- |
-| **Warrior** | `+25` HP, `+20%` Melee dmg, `+25%` vs Full-HP foes, `-15%` Dodge stamina | **Brave Heart:** `+20%` all dmg below `50%` HP, `+5%` speed, stacking **Bloody Onslaught** (`+4%` attack speed & `+2.5%` lifesteal per hit up to `+20%` / `12.5%`) | `-10%` Block power, `-25%` Bow/Crossbow dmg, `-50%` Eitr regen |
+| **Warrior** | `+25` HP, `+20%` Melee dmg, `+25%` vs Full-HP foes, `-15%` Dodge stamina | **Brave Heart:** `+20%` all dmg below `50%` HP, `+5%` speed, stacking **Bloody Onslaught** (`+4%` attack speed & `+2.5%` lifesteal per hit up to `+20%` / `12.5%`) | `-35%` Block power, `-25%` Bow/Crossbow dmg, `-50%` Eitr regen |
 | **Knight** | `+50` HP, `+25` Stamina, `+25%` Shield block power, `+30%` Parry riposte dmg | **Unwavering:** `+15` flat Armor, `+10%` move speed with shield, **Steel Bulwark** (`+25%` total armor while blocking) | `-5%` move speed, `+20%` Dodge stamina, `-30` Sneak, `-100%` Eitr regen |
 | **Thief** | `+50` Stamina, `+25%` Knife dmg, `+35%` Combat backstab, `-25%` Sneak & Dodge stamina | **Shadow Ascension:** `+20` Sneak, `+50%` sneak backstab, **Shroud of Night** (`+25%` all dmg, `-25%` stamina use & `+10%` run speed at night) | `-15%` Armor, `-20%` Block power, `-10%` Ranged dmg, `-35%` Eitr regen |
 | **Hunter** | `+25` Stamina, `+20%` Bow/Crossbow/Spear dmg, `+10` Sneak, `-15%` Bow draw stamina | **Falcon's Finesse:** `+15%` Draw/Reload speed, `+5%` move speed, `+50%` sneak bonus, **3 consecutive hits empower the 4th shot for `x2` damage** | `-25%` Melee dmg (except knives & spears), `-15%` Block power, `-35%` Eitr regen |
-| **Sorcerer** | `+50` Base Eitr, `+25%` Eitr regen, `+25%` Skill XP gain | **Archmage:** `+50%` Forsaken Power duration (`7.5 min` for whole party), `-25%` Forsaken Power cooldown (`15 min`), **Arcane Flow** (**every 5th spell cast/charge costs `0` Eitr**) | `-35%` Physical weapon dmg, `-30%` Armor, `-50` Carry weight, `0` Eitr regen in Heavy Armor |
+| **Sorcerer** | `+50` Base Eitr, `+25%` Eitr regen, `+25%` Skill XP gain | **Archmage:** `+50%` Forsaken Power duration (`7.5 min` for whole party), `-25%` Forsaken Power cooldown (`15 min`), **Arcane Flow** (**every 5th spell cast/charge costs `0` Eitr**) | `-35%` Physical weapon dmg, `-30%` Armor, `-55%` Block power, `-50` Carry weight, `0` Eitr regen in Heavy Armor |
 | **Beggar** | `+100` Carry weight, `+10` Base HP/Stamina/Eitr, `+5%` all dmg & move speed, `+5` Sneak | **Iron Stomach & Ineptitude:** `+15%` HP/Stamina/Eitr from all foods & `+30%` food duration; `-50%` Skill XP gain | Slower skill leveling |
 
 - **Class Respec:** Purchase the **Scroll of Rebirth** from **Hildir** for `1000 Coins` and right-click it in your inventory.
@@ -49,7 +49,7 @@ No more waiting until Mistlands to play a mage, healer, or dual-wielding berserk
 2. **Staff of Purification** (`StaffBlackForest`, *Black Forest — Blood Magic*): Crowned with a glowing shamanic emerald crystal (`50` Eitr, `0%` HP cost). Releases a `10m` healing wave that **cleanses all 6 Combat Injuries and negative debuffs** (*Burning, Poison, Frost, Tar, Lightning, Wet*) **before restoring `+30 / +40 / +50 / +60 HP`** by staff level (`x1.5` stronger — `+45 / +60 / +75 / +90 HP` — inside the Blood Totem's field!).
 3. **Censer of Restless Spirit** (`StaffSwamp`, *Swamp — Elemental Magic*): Detonates an `8s` spirit miasma cloud dealing `5` Poison + `5` Spirit damage (`+5 / +5` per level) once every **`2s`**, **slowing enemy movement by `20%`**, and **stripping ALL damage resistances and immunities** from enemies and bosses inside.
 4. **Thor's Thunder Tuning Staff** (`StaffMountain`, *Mountain — Elemental Magic*): Hold-to-charge lightning railgun (`150 / 300 / 450 / 600` Lightning damage) firing an instant piercing beam through enemies, trees, and structures.
-5. **Staff of Blood Harvest** (`StaffPlains`, *Plains — Blood Magic*): Fixed `75` Eitr & `50` HP cost. Deploys a **permanent** 3D Blood Ritual Totem (max `1` active totem, replaced on recast) summoning an endless crimson rainstorm: slows enemies by `40%`, amplifies **Staff of Purification** healing by **`x1.5`**, and grants allies `+10%` move speed, `+50%` HP & Eitr regen, and `-30%` to all stamina/eitr/health action costs (buff lingers for **`5s`** after leaving the field).
+5. **Staff of Blood Harvest** (`StaffPlains`, *Plains — Blood Magic*): Fixed `75` Eitr & `50` HP cost. Deploys a 3D Blood Ritual Totem (**`15 / 30 / 45 / 60s`** by level, max `1` active totem) summoning a crimson rainstorm: slows enemies by `40%`, amplifies **Staff of Purification** healing by **`x1.5`**, and grants allies `+10%` move speed, `+50%` HP & Eitr regen, and `-30%` to all stamina/eitr/health action costs (aura is **timerless while inside the circle** and starts a **`5s` countdown** upon leaving).
 
 #### Dual-Wielding War Axes
 
@@ -79,14 +79,14 @@ Build the custom 3D **Enchanting Table** (`piece_enchanting_table`) and upgrade 
   <img src="https://raw.githubusercontent.com/Coarstal/PathOfTheFallen/main/docs/images/05_Enchanting_UI.jpg" width="880" alt="Enchanting UI and Custom Gear Inventory" />
 </p>
 
-- Infuse swords, maces, axes, polearms, bows, and offensive staves with **7 Forsaken Boss Souls** across **Tiers I–V** (`+10` to `+50` elemental/physical bonus damage):
+- Infuse melee weapons, bows, crossbows, offensive staves, and **summoning staves** (*Dead Raiser*, *Staff of the Wild*, *Trollstav*) with **7 Forsaken Boss Souls** across **Tiers I–V** — dynamically balanced by weapon progression tier and attack-speed archetype (`0.75x` fast knives/claws up to `1.35x` heavy crossbows & railguns; `130%` combined scaling on dual-element endgame souls):
   - **Eikthyr:** Lightning ⚡ | **The Elder:** Physical 🪵 | **Bonemass:** Poison 🧪 | **Moder:** Frost ❄️ | **Yagluth:** Fire 🔥 | **The Queen:** Poison + Lightning 🟣 | **Fader:** Fire + Spirit 🔥✨
 - Unlock Tier I with `1 Boss Trophy + 1 Biome Mob Trophy`, and upgrade Tiers II–V using matching mob trophies (`5 / 10 / 15 / 20`).
 
 ---
 
 ### ☠️ 4. Hunt Champions, 6 Combat Injuries & Cursed Dungeons (`Enemy Overhaul`)
-- **Named Hunt Champions (Biome Vendetta):** Every **~25–35 slain enemies** across all species, a **Named Champion** of the **exact creature killed last** ambushes the hunter with 2-star base stats (`3.0x` HP, `2.0x` dmg) **plus guaranteed biome elemental attacks** (*toxin/poison, frost, fire, lightning*), combat perks, and stagger resistance — dropping **guaranteed trophies** and **bonus Coins**.
+- **Named Hunt Champions (Biome Vendetta):** Every **~25–35 slain enemies** across all species, a **Named Champion** of the **exact creature killed last** ambushes the hunter with 2-star base stats (`3.0x` HP, `2.0x` dmg) **plus guaranteed biome elemental attacks** (*toxin/poison, frost, fire, lightning*), combat perks, and stagger resistance — **only the Knight class can block or parry a Champion's strikes** (any other class attempting to block has their stamina completely wiped and guard shattered!). Slain Champions drop **guaranteed trophies** and **bonus Coins**.
 - **6 Tactical Combat Injuries:** Unblocked enemy hits dealing at least **`7.5` HP damage** can inflict *Bleeding* (`x2` bleed damage while sprinting/rolling!), *Hamstrung* (`-25%` speed), *Sundered Armor* (`-30%` armor), *Winded* (`-50%` stamina regen), *Eitr Burn* (casting burns HP), or *Putrid Rot* (`-50%` healing — countered by the *Staff of Purification*!).
 - **Sealed Cursed Dungeons (`10%` of each dungeon type):** Strictly `10%` of each multi-room dungeon type (*Burial Chambers, Sunken Crypts, Frost Caves, Infested Mines, Morgen Caves, Charred Tombs*; Troll & Bear caves excluded) are cursed: stepping inside triggers mystical fog, buffs monsters (`+30%` HP & dmg), and **seals the exit shut** until your party slays the **Curse Warden** in the deepest chamber.
 
@@ -127,7 +127,7 @@ Removes boss **Vegvisir** runestones from the overworld and dungeons (or optiona
 | `StaffBlackForest` | Staff of Purification | Black Forest AoE Cleanse & Heal Staff (Lvl 1–4) |
 | `StaffSwamp` | Censer of Restless Spirit | Swamp Resistance-Strip Staff (Lvl 1–4) |
 | `StaffMountain` | Thor's Thunder Tuning Staff | Mountain Lightning Railgun (Lvl 1–4) |
-| `StaffPlains` | Staff of Blood Harvest | Plains Permanent Blood Totem Staff |
+| `StaffPlains` | Staff of Blood Harvest | Plains Blood Totem Staff (Lvl 1–4) |
 | `PartWindCrystal` / `PartCarvedHandle` / `PartRunicBinding` | Whispering Wind Relic Parts | Meadows Chest Relics |
 | `ArmorForestShamanHood` / `ArmorForestShamanChest` / `ArmorForestShamanLegs` | Forest Eitr-Weave Set | Black Forest Mage Armor (`+60%` Eitr Regen) |
 | `ArmorWolfMageHood` / `ArmorWolfMageChest` / `ArmorWolfMageLegs` | Frost Embla Set | Mountain Mage Armor (`+100%` Eitr Regen + Frost Resist) |
@@ -157,11 +157,11 @@ Removes boss **Vegvisir** runestones from the overworld and dungeons (or optiona
 
 | Класс | Преимущества | Пассивный навык | Недостатки |
 | :--- | :--- | :--- | :--- |
-| **Воин** | `+25` HP, `+20%` урона вблизи, `+25%` по целям с полным HP, `-15%` выносливости на перекат | **Храброе сердце:** `+20%` всего урона при `<50%` HP, `+5%` скорости, стаки **Кровавого натиска** (`+4%` скорости атаки и `+2,5%` вампиризма за удар, до `+20%` / `12,5%`) | `-10%` силы блока, `-25%` урона луками/арбалетами, `-50%` регена Эйтра |
+| **Воин** | `+25` HP, `+20%` урона вблизи, `+25%` по целям с полным HP, `-15%` выносливости на перекат | **Храброе сердце:** `+20%` всего урона при `<50%` HP, `+5%` скорости, стаки **Кровавого натиска** (`+4%` скорости атаки и `+2,5%` вампиризма за удар, до `+20%` / `12,5%`) | `-35%` силы блока, `-25%` урона луками/арбалетами, `-50%` регена Эйтра |
 | **Рыцарь** | `+50` HP, `+25` выносливости, `+25%` блока щитом, `+30%` урона по спарированным врагам | **Непоколебимость:** `+15` базовой брони, `+10%` скорости со щитом, **Стальной заслон** (`+25%` к общей броне при поднятом щите) | `-5%` скорости, `+20%` цены переката, `-30` скрытности, `-100%` регена Эйтра |
 | **Вор** | `+50` выносливости, `+25%` урона ножами, `+35%` урона в спину в бою, `-25%` затрат скрытности и переката | **Восхождение в тени:** `+20` скрытности, `+50%` внезапной атаки, **Покров ночи** (`+25%` урона, `-25%` расхода стамины и `+10%` бега ночью) | `-15%` брони, `-20%` силы блока, `-10%` стрелкового урона, `-35%` регена Эйтра |
 | **Охотник** | `+25` выносливости, `+20%` урона луками/арбалетами/копьями, `+10` скрытности, `-15%` натяжения тетивы | **Соколиная сноровка:** `+15%` скорости стрельбы, `+5%` бега, `+50%` внезапной атаки, **после 3 попаданий подряд 4-й выстрел наносит `x2` урона** | `-25%` ближнего урона (кроме ножей и копий), `-15%` блока, `-35%` регена Эйтра |
-| **Колдун** | `+50` базового Эйтра, `+25%` регена Эйтра, `+25%` опыта навыков | **Архимаг:** `+50%` длительности Силы Павших (`7,5 мин.` на всех союзников), `-25%` перезарядки Силы Павших (`15 мин.`), **Поток магии** (**каждый 5-й каст/заряд бесплатный по Эйтру**) | `-35%` физ. оружием, `-30%` брони, `-50` веса, `0` регена Эйтра в тяжёлой броне |
+| **Колдун** | `+50` базового Эйтра, `+25%` регена Эйтра, `+25%` опыта навыков | **Архимаг:** `+50%` длительности Силы Павших (`7,5 мин.` на всех союзников), `-25%` перезарядки Силы Павших (`15 мин.`), **Поток магии** (**каждый 5-й каст/заряд бесплатный по Эйтру**) | `-35%` физ. оружием, `-30%` брони, `-55%` силы блока, `-50` веса, `0` регена Эйтра в тяжёлой броне |
 | **Нищий** | `+100` переносимого веса, `+10` HP/стамины/Эйтра, `+5%` урона и бега, `+5` скрытности | **Лужёный желудок и Бездарность:** `+15%` характеристик от любой еды и `+30%` длительности сытости; `-50%` опыта навыков | Медленная прокачка навыков |
 
 - **Смена класса:** купите **«Свиток Перерождения»** у **Хильдир** за `1000 монет` и нажмите по нему ПКМ в инвентаре.
@@ -181,7 +181,7 @@ Removes boss **Vegvisir** runestones from the overworld and dungeons (or optiona
 2. **Посох Очищения** (`StaffBlackForest`, *Чёрный лес — Магия крови*): шаманский посох с изумрудным кристаллом (`50` Эйтра, `0%` траты HP). Испускает целебную волну радиусом `10 м`, которая **сперва снимает все 6 Боевых Травм и негативные эффекты** (*Горение, Яд, Иней, Смолу, Молнию, Промокание*), **а затем лечит всех союзников в круге на `+30 / +40 / +50 / +60 HP`** по уровню посоха (в поле Кровавого Тотема — **`x1,5`**, т.е. `+45 / +60 / +75 / +90 HP`!).
 3. **Кадило Беспокойного Духа** (`StaffSwamp`, *Болота — Магия стихий*): взрывает облако миазмов на `8 сек.`, наносящее `5` урона ядом и `5` духом (`+5 / +5` за каждый уровень) **каждые `2 сек.`**, **замедляющее бег врагов на `20%`** и **полностью срывающее любые сопротивления и иммунитеты** у врагов и боссов.
 4. **Громовой Камертон Тора** (`StaffMountain`, *Горы — Магия стихий*): заряжаемый молниевый рельсотрон (`150 / 300 / 450 / 600` урона молнией), прошивающий врагов, деревья и постройки навылет.
-5. **Посох Кровавой Жатвы** (`StaffPlains`, *Равнины — Магия крови*): стабильный расход `75` Эйтра и `50` HP. Устанавливает **бесконечный** 3D-тотем кровавого дождя (лимит: `1` активный тотем, переставляется новым кастом): замедляет врагов на `40%`, усиливает исцеление **Посоха Очищения** в **`1,5` раза**, а игрокам даёт `+10%` скорости, `+50%` регенерации HP и Эйтра и `-30%` ко всем затратам (при выходе из поля бафф действует ещё **`5 сек.`**).
+5. **Посох Кровавой Жатвы** (`StaffPlains`, *Равнины — Магия крови*): стабильный расход `75` Эйтра и `50` HP. Устанавливает 3D-тотем кровавого дождя (**`15 / 30 / 45 / 60 сек.`** по уровню, лимит: `1` активный тотем): замедляет врагов на `40%`, усиливает исцеление **Посоха Очищения** в **`1,5` раза**, а игрокам даёт `+10%` скорости, `+50%` регенерации HP и Эйтра и `-30%` ко всем затратам (**внутри круга бафф висит без таймера**, а при выходе включается отсчёт **`5 сек.`**).
 
 #### Парные секиры, Эйтр-броня и 6 блюд на Эйтр
 
@@ -205,13 +205,13 @@ Removes boss **Vegvisir** runestones from the overworld and dungeons (or optiona
   <img src="https://raw.githubusercontent.com/Coarstal/PathOfTheFallen/main/docs/images/05_Enchanting_UI.jpg" width="880" alt="Интерфейс зачарования и экипировка" />
 </p>
 
-- Наделите оружие силой любого из **7 боссов Вальхейма** и прокачайте чары с **I по V уровень** (`+10..+50` бонусного урона с цветной меткой заточки на иконке):
+- Наделите любое боевое оружие, луки, арбалеты, боевые посохи и даже **посохи призыва** (*Пробуждающий мертвецов*, *Посох дикой природы*, *Посох тролля*) силой любого из **7 боссов Вальхейма** (**I–V уровень** с индивидуальным балансом под тир биома, скорость атаки и механику оружия + цветной меткой заточки на иконке):
   - **Эйктюр:** Молния ⚡ | **Древний:** Физ. урон 🪵 | **Масса Костей:** Яд 🧪 | **Моудер:** Мороз ❄️ | **Яглут:** Огонь 🔥 | **Королева:** Яд + Молния 🟣 | **Фадер:** Огонь + Дух 🔥✨
 
 ---
 
 ### ☠️ 4. Чемпионы Охоты, 6 Боевых Травм и Проклятые Данжи (`Enemy Overhaul`)
-- **Именные Чемпионы Охоты:** каждые **~25–35 убитых врагов** (единый счётчик на всех мобов) по следу охотника выходит **Чемпион — того вида моба, который был убит последним**, с базовыми характеристиками `2★` (`3.0x` HP, `2.0x` урона) и **гарантированным стихийным уроном своего биома** (*токсином/ядом, морозом, огнём или молнией*) + боевыми перками. За победу — **100% гарантированный дроп трофеев** и **монеты**.
+- **Именные Чемпионы Охоты:** каждые **~25–35 убитых врагов** (единый счётчик на всех мобов) по следу охотника выходит **Чемпион — того вида моба, который был убит последним**, с базовыми характеристиками `2★` (`3.0x` HP, `2.0x` урона) и **гарантированным стихийным уроном своего биома** (*токсином/ядом, морозом, огнём или молнией*) + боевыми перками. **Заблокировать или запарировать удар Чемпиона может только Рыцарь** — всем остальным классам при попытке блока гарантированно выбивает всю выносливость и пробивает защиту! За победу — **100% гарантированный дроп трофеев** и **монеты**.
 - **6 Боевых Травм:** незаблокированные удары врагов (наносящие минимум **`7.5` ед. урона** по здоровью) накладывают *Рваную рану* (на спринте и в перекатах урон крови `x2`!), *Простреленное сухожилие*, *Раскол брони*, *Выбитое дыхание*, *Ожог Эйтра* или *Заражение* (`-50%` любого лечения — снимается *Посохом Очищения*!).
 - **Запечатанные Проклятые Данжи (`10%` от каждого типа):** ровно `10%` многокомнатных подземелий каждого типа в мире (*Курганы, Затопленные склепы, Морозные пещеры, Заражённые шахты, Пещеры Моргена и Гробницы*; пещеры тролля и медведя исключены) оказываются прокляты — внутри сгущается цветной туман, мобы получают `+30%` к HP и урону, а **выход наружу запечатывается**, пока не повержен **Страж Проклятия** в дальней комнате.
 
@@ -264,7 +264,7 @@ Removes boss **Vegvisir** runestones from the overworld and dungeons (or optiona
 | `StaffBlackForest` | Посох Очищения | Посох снятия дебаффов и лечения (Чёрный лес, ур. 1–4) |
 | `StaffSwamp` | Кадило Беспокойного Духа | Посох снятия сопротивлений (Болота, ур. 1–4) |
 | `StaffMountain` | Громовой Камертон Тора | Молниевый рельсотрон (Горы, ур. 1–4) |
-| `StaffPlains` | Посох Кровавой Жатвы | Посох бесконечного кровавого тотема (Равнины) |
+| `StaffPlains` | Посох Кровавой Жатвы | Посох кровавого тотема (Равнины, ур. 1–4) |
 | `PartWindCrystal` | Осколок Кристалла Ветра | Реликвия для крафта посоха Лугов |
 | `PartCarvedHandle` | Резная Ясеневая Рукоять | Реликвия для крафта посоха Лугов |
 | `PartRunicBinding` | Руническая Перевязь из Рога | Реликвия для крафта посоха Лугов |

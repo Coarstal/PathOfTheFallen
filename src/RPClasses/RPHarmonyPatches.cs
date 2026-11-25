@@ -768,7 +768,11 @@ namespace CoarstalsRPClasses
                 }
                 else if (cls == RPClassType.Hunter)
                 {
-                    ActiveBlockMultiplier = Mathf.Max(0.1f, 1f - RPClassConfig.HunterBlockPowerPenalty.Value);
+                    ActiveBlockMultiplier = Mathf.Max(0.05f, 1f - RPClassConfig.HunterBlockPowerPenalty.Value);
+                }
+                else if (cls == RPClassType.Sorcerer)
+                {
+                    ActiveBlockMultiplier = Mathf.Max(0.05f, 1f - RPClassConfig.SorcererBlockPowerPenalty.Value);
                 }
             }
 
@@ -809,7 +813,11 @@ namespace CoarstalsRPClasses
                 }
                 else if (cls == RPClassType.Hunter)
                 {
-                    __result *= Mathf.Max(0.1f, 1f - RPClassConfig.HunterBlockPowerPenalty.Value);
+                    __result *= Mathf.Max(0.05f, 1f - RPClassConfig.HunterBlockPowerPenalty.Value);
+                }
+                else if (cls == RPClassType.Sorcerer)
+                {
+                    __result *= Mathf.Max(0.05f, 1f - RPClassConfig.SorcererBlockPowerPenalty.Value);
                 }
             }
         }

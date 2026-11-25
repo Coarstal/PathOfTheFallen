@@ -59,6 +59,7 @@ namespace CoarstalsEnemyOverhaul
 
                 // Champion tags & Blood Dominion immunity
                 { "ceo_champ_dominion_immune", "A Champion's will cannot be dominated!" },
+                { "ceo_champ_guard_shattered", "Guard shattered! Only a Knight can block a Champion!" },
                 { "ceo_champ_tag", "CHAMPION" },
                 { "ceo_dungeon_warden_tag", "CURSED WARDEN" },
                 { "ceo_cursed_mob_tag", "Cursed" },
@@ -104,6 +105,7 @@ namespace CoarstalsEnemyOverhaul
 
                 // Чемпионы и иммунитет к Посоху Крови
                 { "ceo_champ_dominion_immune", "Волю Чемпиона невозможно подчинить!" },
+                { "ceo_champ_guard_shattered", "Блок пробит! Только Рыцарь способен удержать удар Чемпиона!" },
                 { "ceo_champ_tag", "ЧЕМПИОН" },
                 { "ceo_dungeon_warden_tag", "СТРАЖ ПРОКЛЯТИЯ" },
                 { "ceo_cursed_mob_tag", "Проклятый" },

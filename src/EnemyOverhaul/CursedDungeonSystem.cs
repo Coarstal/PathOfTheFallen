@@ -609,6 +609,42 @@ namespace CoarstalsEnemyOverhaul
             return null;
         }
 
+        private static System.Reflection.PropertyInfo s_softRefNameProp;
+        private static System.Reflection.FieldInfo s_softRefNameField;
+        private static bool s_softRefMemberResolved;
+
+        private static string GetLocationSoftRefName(ZoneSystem.ZoneLocation loc)
+        {
+            if (loc == null || !loc.m_prefab.IsValid) return "";
+            try
+            {
+                object boxed = loc.m_prefab;
+                if (!s_softRefMemberResolved)
+                {
+                    Type srType = boxed.GetType();
+                    s_softRefNameProp = srType.GetProperty("name", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
+                    if (s_softRefNameProp == null)
+                    {
+                        s_softRefNameProp = srType.GetProperty("Name", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
+                    }
+                    s_softRefNameField = srType.GetField("m_name", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
+                    s_softRefMemberResolved = true;
+                }
+                if (s_softRefNameProp != null)
+                {
+                    string val = s_softRefNameProp.GetValue(boxed, null) as string;
+                    if (!string.IsNullOrEmpty(val)) return val;
+                }
+                if (s_softRefNameField != null)
+                {
+                    string val = s_softRefNameField.GetValue(boxed) as string;
+                    if (!string.IsNullOrEmpty(val)) return val;
+                }
+            }
+            catch { }
+            return "";
+        }
+
         private static void EnsureWorldPerTypeCurseQuotaBuilt()
         {
             if (ZoneSystem.instance == null || ZoneSystem.instance.m_locationInstances == null) return;
@@ -642,7 +678,7 @@ namespace CoarstalsEnemyOverhaul
                 string prefabName = inst.m_location.m_prefabName;
                 if (string.IsNullOrEmpty(prefabName) && inst.m_location.m_prefab.IsValid)
                 {
-                    prefabName = inst.m_location.m_prefab.Name;
+                    prefabName = GetLocationSoftRefName(inst.m_location);
                 }
 
                 string group = GetCanonicalDungeonTypeGroup(prefabName);
@@ -1827,7 +1863,7 @@ namespace CoarstalsEnemyOverhaul
                 string prefabName = inst.m_location.m_prefabName;
                 if (string.IsNullOrEmpty(prefabName) && inst.m_location.m_prefab.IsValid)
                 {
-                    prefabName = inst.m_location.m_prefab.Name;
+                    prefabName = GetLocationSoftRefName(inst.m_location);
                 }
                 if (!IsEnterableDungeonLocationPrefab(prefabName)) continue;
                 totalEligibleDungeons++;
