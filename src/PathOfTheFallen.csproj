@@ -4,7 +4,7 @@
     <TargetFramework>net462</TargetFramework>
     <AssemblyName>PathOfTheFallen</AssemblyName>
     <Description>Valheim - Path of the Fallen: unified RPG overhaul combining RP Classes, Weapon Attributes, Weapon Pack &amp; Eitr Foods, Eitr Armor, Enemy Overhaul, and No Vegvisir</Description>
-    <Version>1.0.6</Version>
+    <Version>1.0.7</Version>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <LangVersion>latest</LangVersion>
     <ValheimGamePath Condition="'$(ValheimGamePath)' == ''">E:\SteamLibrary\steamapps\common\Valheim</ValheimGamePath>

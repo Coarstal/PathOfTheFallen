@@ -284,6 +284,8 @@ namespace WeaponAttributesMod
                 "DualAttributeSplit",
                 false,
                 new ConfigDescription("[Legacy] Replaced by DualAttributeFactorPerElementV2 in v1.0.6+.", null, adminAttr));
+
+            SoulExtractionSystem.BindConfigs(config);
         }
 
         public static void Init(ManualLogSource logger)
@@ -292,6 +294,7 @@ namespace WeaponAttributesMod
             WeaponAttributesLocalization.RegisterAll();
             LoadEmbeddedIcons();
             PrefabManager.OnPrefabsRegistered += CustomEnchantingTable.RegisterCustomTable;
+            SoulExtractionSystem.Init();
             s_initialized = true;
             if (logger != null)
             {
@@ -302,6 +305,7 @@ namespace WeaponAttributesMod
         public static void Shutdown()
         {
             PrefabManager.OnPrefabsRegistered -= CustomEnchantingTable.RegisterCustomTable;
+            SoulExtractionSystem.Shutdown();
             s_initialized = false;
         }
 
@@ -977,6 +981,13 @@ namespace WeaponAttributesMod
         public static void Postfix(ItemDrop.ItemData item, int qualityLevel, ref string __result)
         {
             if (item == null || !WeaponAttributesPlugin.IsActive) return;
+
+            if (SoulExtractionSystem.IsFilledSoulCrystal(item))
+            {
+                __result += SoulExtractionSystem.BuildFilledCrystalTooltipAppendix(item);
+                return;
+            }
+
             string enchantStr = WeaponAttributesPlugin.GetAttributeEnchantString(item);
             if (string.IsNullOrEmpty(enchantStr)) return;
 
@@ -1183,7 +1194,18 @@ namespace WeaponAttributesMod
                 int y = i / width;
                 ItemDrop.ItemData itemAt = inv.GetItemAt(x, y);
 
-                if (itemAt != null && WeaponAttributesPlugin.IsWeapon(itemAt))
+                if (itemAt != null && SoulExtractionSystem.IsFilledSoulCrystal(itemAt) && qualityText != null)
+                {
+                    string cBoss = SoulExtractionSystem.GetFilledCrystalBossKey(itemAt);
+                    int cLv = SoulExtractionSystem.GetFilledCrystalLevel(itemAt);
+                    string cHex = SoulExtractionSystem.GetReadableBossColorHex(cBoss);
+                    qualityText.gameObject.SetActive(true);
+                    qualityText.enabled = true;
+                    qualityText.textWrappingMode = TMPro.TextWrappingModes.NoWrap;
+                    qualityText.overflowMode = TMPro.TextOverflowModes.Overflow;
+                    qualityText.text = string.Format("<color={0}>{1}</color>", cHex, SoulExtractionSystem.ToRoman(cLv));
+                }
+                else if (itemAt != null && WeaponAttributesPlugin.IsWeapon(itemAt))
                 {
                     string enchant = WeaponAttributesPlugin.GetAttributeEnchantString(itemAt);
                     if (!string.IsNullOrEmpty(enchant) && qualityText != null)
@@ -1303,9 +1325,13 @@ namespace WeaponAttributesMod
                 }
 
                 Piece basePiece = custom.GetComponent<Piece>();
-                if (basePiece != null && customIcon != null)
+                if (basePiece != null)
                 {
-                    basePiece.m_icon = customIcon;
+                    basePiece.m_randomInitBuildRotation = false;
+                    if (customIcon != null)
+                    {
+                        basePiece.m_icon = customIcon;
+                    }
                 }
 
                 // Load our custom Blender 3D Model ("Boss Soul Enchanting Table"), colliders, and purple glow effects
@@ -1484,6 +1510,12 @@ namespace WeaponAttributesMod
                 stationExt.m_craftingStation = targetStation;
                 stationExt.m_maxStationDistance = 6f;
 
+                Piece extPiece = extObj.GetComponent<Piece>();
+                if (extPiece != null)
+                {
+                    extPiece.m_randomInitBuildRotation = false;
+                }
+
                 // Create custom model root
                 GameObject modelRoot = new GameObject(prefabName + "_Model");
                 modelRoot.layer = pieceLayer;
@@ -1655,7 +1687,7 @@ namespace WeaponAttributesMod
             }
         }
 
-        private static Sprite LoadEmbeddedSprite(string resName)
+        internal static Sprite LoadEmbeddedSprite(string resName)
         {
             try
             {
@@ -1679,7 +1711,7 @@ namespace WeaponAttributesMod
             return null;
         }
 
-        private static Material CreatePBRMaterial(Shader shader, string matName)
+        internal static Material CreatePBRMaterial(Shader shader, string matName)
         {
             Material m = new Material(shader);
             m.name = matName;
@@ -1692,6 +1724,47 @@ namespace WeaponAttributesMod
 
             switch (matName)
             {
+                case "SoulBrewSurface":
+                    baseCol = new Color(0.36f, 0.08f, 0.78f, 1f);
+                    metallic = 0.12f;
+                    gloss = 0.74f;
+                    emission = new Color(0.42f, 0.10f, 0.86f, 1f) * 0.88f;
+                    hasEmission = true;
+                    break;
+                case "SoulBrewBubbles":
+                    baseCol = new Color(0.18f, 0.86f, 0.88f, 1f);
+                    metallic = 0.06f;
+                    gloss = 0.80f;
+                    emission = new Color(0.16f, 0.88f, 0.90f, 1f) * 0.92f;
+                    hasEmission = true;
+                    break;
+                case "SoulLadle_Wood":
+                    baseCol = new Color(0.24f, 0.14f, 0.08f, 1f);
+                    metallic = 0.05f;
+                    gloss = 0.34f;
+                    break;
+                case "SoulLadle_Iron":
+                    baseCol = new Color(0.20f, 0.22f, 0.28f, 1f);
+                    metallic = 0.90f;
+                    gloss = 0.70f;
+                    break;
+                case "SoulLadle_Bronze":
+                    baseCol = new Color(0.68f, 0.44f, 0.16f, 1f);
+                    metallic = 0.90f;
+                    gloss = 0.74f;
+                    break;
+                case "SoulLadle_Rune":
+                    baseCol = new Color(0.22f, 0.84f, 0.96f, 1f);
+                    metallic = 0.12f;
+                    gloss = 0.78f;
+                    emission = new Color(0.20f, 0.84f, 0.96f, 1f) * 1.05f;
+                    hasEmission = true;
+                    break;
+                case "EmptyQuartzCrystal":
+                    baseCol = new Color(0.26f, 0.33f, 0.42f, 1f);
+                    metallic = 0.35f;
+                    gloss = 0.84f;
+                    break;
                 case "DarkYggdrasilWood":
                     baseCol = new Color(0.22f, 0.15f, 0.11f, 1f);
                     metallic = 0.05f;
@@ -1725,22 +1798,22 @@ namespace WeaponAttributesMod
                 case "GlowingSoulCrystal":
                     baseCol = new Color(0.72f, 0.22f, 0.98f, 1f);
                     metallic = 0.20f;
-                    gloss = 0.88f;
-                    emission = new Color(0.75f, 0.18f, 1.0f, 1f) * 2.2f;
+                    gloss = 0.84f;
+                    emission = new Color(0.75f, 0.18f, 1.0f, 1f) * 1.35f;
                     hasEmission = true;
                     break;
                 case "GlowingArcaneRune":
-                    baseCol = new Color(0.90f, 0.35f, 1.0f, 1f);
+                    baseCol = new Color(0.86f, 0.32f, 0.98f, 1f);
                     metallic = 0.10f;
-                    gloss = 0.80f;
-                    emission = new Color(0.88f, 0.25f, 1.0f, 1f) * 3.8f;
+                    gloss = 0.75f;
+                    emission = new Color(0.84f, 0.22f, 0.98f, 1f) * 1.65f;
                     hasEmission = true;
                     break;
                 case "ArcaneEmberCoal":
-                    baseCol = new Color(0.35f, 0.10f, 0.48f, 1f);
+                    baseCol = new Color(0.32f, 0.10f, 0.44f, 1f);
                     metallic = 0.05f;
-                    gloss = 0.20f;
-                    emission = new Color(0.62f, 0.12f, 0.92f, 1f) * 1.6f;
+                    gloss = 0.18f;
+                    emission = new Color(0.56f, 0.10f, 0.84f, 1f) * 0.78f;
                     hasEmission = true;
                     break;
                 case "PurpleLeatherWrap":
@@ -2123,7 +2196,7 @@ namespace WeaponAttributesMod
             LoadEmbeddedMeshIntoRoot(modelRoot, "BossSoulTableMesh.bin.gz", baseShader, pieceLayer);
         }
 
-        private static void LoadEmbeddedMeshIntoRoot(GameObject modelRoot, string resourceName, Shader baseShader, int pieceLayer)
+        internal static void LoadEmbeddedMeshIntoRoot(GameObject modelRoot, string resourceName, Shader baseShader, int pieceLayer)
         {
             try
             {
@@ -2146,6 +2219,9 @@ namespace WeaponAttributesMod
                             using (BinaryReader br = new BinaryReader(ms))
                             {
                                 uint subCount = br.ReadUInt32();
+                                Transform ladleSharedRoot = null;
+                                Vector3 ladlePivot = new Vector3(0f, 0.78f, 0f);
+                                Vector3 brewPivot = new Vector3(0f, 0.81f, 0f);
 
                                 for (int s = 0; s < subCount; s++)
                                 {
@@ -2163,16 +2239,25 @@ namespace WeaponAttributesMod
                                     bool isAcidAnim = (matName == "BonemassAcidSurface" || matName == "BonemassBubblesA" || matName == "BonemassBubblesB" || matName == "BonemassRisingDroplets");
                                     bool isModerCrystalAnim = (matName == "ModerCrystalCyan" || matName == "ModerCrystalAzure" || matName == "ModerCrystalViolet");
                                     bool isYagluthFireAnim = (matName == "YagluthFlameCore" || matName == "YagluthFlameMid" || matName == "YagluthFlameOuter" || matName == "YagluthFireSparks");
+                                    bool isSoulLadle = matName.StartsWith("SoulLadle_", StringComparison.Ordinal);
+                                    bool isSoulBrew = (matName == "SoulBrewSurface" || matName == "SoulBrewBubbles");
+
                                     Vector3 orbPivot = new Vector3(0f, 0.88f, 0f);
                                     Vector3 acidPivot = new Vector3(0f, 0.885f, 0f);
                                     Vector3 crystalPivot = new Vector3(0f, 0.50f, 0f);
                                     Vector3 firePivot = new Vector3(0f, 0.46f, 0f);
-                                    Vector3 activePivot = isVortexOrb ? orbPivot : (isAcidAnim ? acidPivot : (isModerCrystalAnim ? crystalPivot : (isYagluthFireAnim ? firePivot : Vector3.zero)));
+                                    Vector3 activePivot = Vector3.zero;
+                                    if (isVortexOrb) activePivot = orbPivot;
+                                    else if (isAcidAnim) activePivot = acidPivot;
+                                    else if (isModerCrystalAnim) activePivot = crystalPivot;
+                                    else if (isYagluthFireAnim) activePivot = firePivot;
+                                    else if (isSoulLadle) activePivot = ladlePivot;
+                                    else if (isSoulBrew) activePivot = brewPivot;
 
                                     for (int v = 0; v < vCount; v++)
                                     {
                                         Vector3 rawV = new Vector3(br.ReadSingle(), br.ReadSingle(), br.ReadSingle());
-                                        verts[v] = (isVortexOrb || isAcidAnim || isModerCrystalAnim || isYagluthFireAnim) ? (rawV - activePivot) : rawV;
+                                        verts[v] = (activePivot != Vector3.zero) ? (rawV - activePivot) : rawV;
                                     }
                                     for (int v = 0; v < vCount; v++)
                                     {
@@ -2188,13 +2273,40 @@ namespace WeaponAttributesMod
                                         tris[t] = (int)br.ReadUInt16();
                                     }
 
-                                    // Create a dedicated child MeshFilter + MeshRenderer per material (100% immune to 65k vertex indexing limits and static batching glitches)
+                                    // Create a dedicated child MeshFilter + MeshRenderer per material
                                     GameObject partObj = new GameObject("Part_" + matName);
                                     partObj.layer = pieceLayer;
-                                    partObj.transform.SetParent(modelRoot.transform, false);
-                                    partObj.transform.localPosition = activePivot;
+                                    if (isSoulLadle)
+                                    {
+                                        if (ladleSharedRoot == null)
+                                        {
+                                            GameObject lRootObj = new GameObject("LadleStirRoot");
+                                            lRootObj.layer = pieceLayer;
+                                            lRootObj.transform.SetParent(modelRoot.transform, false);
+                                            lRootObj.transform.localPosition = ladlePivot;
+                                            lRootObj.transform.localRotation = Quaternion.identity;
+                                            lRootObj.transform.localScale = Vector3.one;
+                                            SoulCauldronLadleAnimator lAnim = lRootObj.AddComponent<SoulCauldronLadleAnimator>();
+                                            lAnim.m_pivotPos = ladlePivot;
+                                            ladleSharedRoot = lRootObj.transform;
+                                        }
+                                        partObj.transform.SetParent(ladleSharedRoot, false);
+                                        partObj.transform.localPosition = Vector3.zero;
+                                    }
+                                    else
+                                    {
+                                        partObj.transform.SetParent(modelRoot.transform, false);
+                                        partObj.transform.localPosition = activePivot;
+                                    }
                                     partObj.transform.localRotation = Quaternion.identity;
                                     partObj.transform.localScale = Vector3.one;
+
+                                    if (isSoulBrew)
+                                    {
+                                        SoulCauldronBrewAnimator bAnim = partObj.AddComponent<SoulCauldronBrewAnimator>();
+                                        bAnim.m_basePos = activePivot;
+                                        bAnim.m_mode = (matName == "SoulBrewBubbles") ? 1 : 0;
+                                    }
 
                                     if (isVortexOrb)
                                     {
@@ -2611,6 +2723,12 @@ namespace WeaponAttributesMod
     {
         public static bool Prefix(Recipe recipe, bool discover, int qualityLevel, int amount, ref bool __result)
         {
+            if (SoulCauldronGuiHelper.IsCauldronRecipe(recipe))
+            {
+                __result = true;
+                return false;
+            }
+
             if (Patch_InventoryGui_UpdateRecipeList.IsOurRecipe(recipe))
             {
                 Player localPlayer = Player.m_localPlayer;
@@ -2703,13 +2821,44 @@ namespace WeaponAttributesMod
             }
         }
 
-        private static void DecorateLastAddedRecipeRow(InventoryGui gui, ItemDrop.ItemData weapon, string bossKey, int currentEnchantLevel, int targetLevel, bool canCraft)
+        internal static Transform GetNewlyAddedRowTransform(InventoryGui gui, int prevAvailCount)
+        {
+            if (gui == null) return null;
+            if (m_availableRecipesField != null)
+            {
+                IList avail = m_availableRecipesField.GetValue(gui) as IList;
+                if (avail != null)
+                {
+                    if (avail.Count <= prevAvailCount || avail.Count == 0)
+                    {
+                        return null;
+                    }
+                    object lastPair = avail[avail.Count - 1];
+                    if (lastPair != null)
+                    {
+                        PropertyInfo elemProp = lastPair.GetType().GetProperty("InterfaceElement");
+                        if (elemProp != null)
+                        {
+                            GameObject elemGo = elemProp.GetValue(lastPair, null) as GameObject;
+                            if (elemGo != null)
+                            {
+                                return elemGo.transform;
+                            }
+                        }
+                    }
+                }
+            }
+            if (gui.m_recipeListRoot != null && gui.m_recipeListRoot.childCount > 0)
+            {
+                return gui.m_recipeListRoot.GetChild(gui.m_recipeListRoot.childCount - 1);
+            }
+            return null;
+        }
+
+        private static void DecorateLastAddedRecipeRow(InventoryGui gui, int prevAvailCount, ItemDrop.ItemData weapon, string bossKey, int currentEnchantLevel, int targetLevel, bool canCraft)
         {
             if (gui == null || gui.m_recipeListRoot == null || weapon == null || weapon.m_shared == null) return;
-            int childCount = gui.m_recipeListRoot.childCount;
-            if (childCount <= 0) return;
-
-            Transform row = gui.m_recipeListRoot.GetChild(childCount - 1);
+            Transform row = GetNewlyAddedRowTransform(gui, prevAvailCount);
             if (row == null) return;
 
             string weaponName = Localization.instance.Localize(weapon.m_shared.m_name);
@@ -2919,6 +3068,18 @@ namespace WeaponAttributesMod
             CraftingStation currentStation = player.GetCurrentCraftingStation();
             if (currentStation == null) return;
 
+            if (SoulExtractionSystem.IsSoulCauldronStation(currentStation))
+            {
+                if (recipes != null) recipes.Clear();
+                SoulCauldronGuiHelper.PopulateCauldronRecipeList(__instance, player, currentStation);
+                return;
+            }
+
+            if (__instance.m_tabUpgrade != null && !__instance.m_tabUpgrade.gameObject.activeSelf)
+            {
+                __instance.m_tabUpgrade.gameObject.SetActive(true);
+            }
+
             string sName = currentStation.name != null ? currentStation.name.ToLower() : "";
             string rawStationToken = currentStation.m_name ?? "";
             string locName = !string.IsNullOrEmpty(rawStationToken) ? Localization.instance.Localize(rawStationToken).ToLower() : "";
@@ -3012,8 +3173,10 @@ namespace WeaponAttributesMod
                             bool canCraft = hasItems && (currentStationLevel >= 1);
                             if (canCraft != wantCraftable) continue;
 
+                            IList availBefore1 = m_availableRecipesField != null ? m_availableRecipesField.GetValue(__instance) as IList : null;
+                            int prevCount1 = availBefore1 != null ? availBefore1.Count : -1;
                             m_addRecipeToListMethod.Invoke(__instance, new object[] { player, rec, weapon, canCraft });
-                            DecorateLastAddedRecipeRow(__instance, weapon, bossKey, 0, 1, canCraft);
+                            DecorateLastAddedRecipeRow(__instance, prevCount1, weapon, bossKey, 0, 1, canCraft);
                             addedAny = true;
                         }
                     }
@@ -3043,8 +3206,10 @@ namespace WeaponAttributesMod
                             bool canCraft = hasItems && (currentStationLevel >= targetLevel);
                             if (canCraft != wantCraftable) continue;
 
+                            IList availBefore2 = m_availableRecipesField != null ? m_availableRecipesField.GetValue(__instance) as IList : null;
+                            int prevCount2 = availBefore2 != null ? availBefore2.Count : -1;
                             m_addRecipeToListMethod.Invoke(__instance, new object[] { player, rec, weapon, canCraft });
-                            DecorateLastAddedRecipeRow(__instance, weapon, bossKey, currentLevel, targetLevel, canCraft);
+                            DecorateLastAddedRecipeRow(__instance, prevCount2, weapon, bossKey, currentLevel, targetLevel, canCraft);
                             addedAny = true;
                         }
                     }
@@ -3080,6 +3245,14 @@ namespace WeaponAttributesMod
 
             PropertyInfo recipeProp = rdpObj.GetType().GetProperty("Recipe");
             Recipe recipe = recipeProp != null ? (Recipe)recipeProp.GetValue(rdpObj, null) : null;
+
+            if (recipe != null && SoulCauldronGuiHelper.IsCauldronRecipe(recipe))
+            {
+                PropertyInfo itemDataPropCauldron = rdpObj.GetType().GetProperty("ItemData");
+                ItemDrop.ItemData crystalItem = itemDataPropCauldron != null ? (ItemDrop.ItemData)itemDataPropCauldron.GetValue(rdpObj, null) : null;
+                SoulCauldronGuiHelper.RenderCauldronSelectedRecipe(__instance, player, recipe, crystalItem);
+                return;
+            }
 
             if (recipe != null && Patch_InventoryGui_UpdateRecipeList.IsOurRecipe(recipe))
             {
@@ -3372,7 +3545,36 @@ namespace WeaponAttributesMod
 
             PropertyInfo recipeProp = rdpObj.GetType().GetProperty("Recipe");
             Recipe recipe = recipeProp != null ? (Recipe)recipeProp.GetValue(rdpObj, null) : null;
-            if (recipe == null || !Patch_InventoryGui_UpdateRecipeList.IsOurRecipe(recipe)) return true;
+            if (recipe == null) return true;
+
+            if (SoulCauldronGuiHelper.IsCauldronRecipe(recipe))
+            {
+                PropertyInfo crystalProp = rdpObj.GetType().GetProperty("ItemData");
+                ItemDrop.ItemData crystalItem = crystalProp != null ? (ItemDrop.ItemData)crystalProp.GetValue(rdpObj, null) : null;
+                Player localP = Player.m_localPlayer;
+                if (localP == null) return false;
+
+                if (crystalItem == null || !localP.GetInventory().ContainsItem(crystalItem))
+                {
+                    localP.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$msg_missingrequirement"));
+                    return false;
+                }
+
+                if (m_craftRecipeField != null) m_craftRecipeField.SetValue(__instance, recipe);
+                if (m_craftUpgradeItemField != null) m_craftUpgradeItemField.SetValue(__instance, crystalItem);
+                if (m_craftVariantField != null) m_craftVariantField.SetValue(__instance, 0);
+                if (m_multiCraftingField != null) m_multiCraftingField.SetValue(__instance, false);
+                if (m_touchMultiCraftingField != null) m_touchMultiCraftingField.SetValue(__instance, false);
+                if (m_craftTimerField != null) m_craftTimerField.SetValue(__instance, 0f);
+
+                if (__instance.CraftingVibration != null)
+                {
+                    UnityEngine.Object.Instantiate<GameObject>(__instance.CraftingVibration);
+                }
+                return false;
+            }
+
+            if (!Patch_InventoryGui_UpdateRecipeList.IsOurRecipe(recipe)) return true;
 
             PropertyInfo itemDataProp = rdpObj.GetType().GetProperty("ItemData");
             ItemDrop.ItemData weapon = itemDataProp != null ? (ItemDrop.ItemData)itemDataProp.GetValue(rdpObj, null) : null;
@@ -3461,6 +3663,17 @@ namespace WeaponAttributesMod
             WeaponAttributesPlugin.m_upgradingLevel = null;
 
             Recipe currentRecipe = m_craftRecipeField != null ? (Recipe)m_craftRecipeField.GetValue(__instance) : null;
+
+            if (currentRecipe != null && SoulCauldronGuiHelper.IsCauldronRecipe(currentRecipe))
+            {
+                ItemDrop.ItemData selectedCrystal = m_craftUpgradeItemField != null ? (ItemDrop.ItemData)m_craftUpgradeItemField.GetValue(__instance) : null;
+                SoulCauldronGuiHelper.ExecuteCauldronExtraction(player, currentRecipe, selectedCrystal);
+                if (m_updateCraftingPanelMethod != null)
+                {
+                    m_updateCraftingPanelMethod.Invoke(__instance, new object[] { false });
+                }
+                return false;
+            }
 
             if (currentRecipe != null && Patch_InventoryGui_UpdateRecipeList.IsOurRecipe(currentRecipe))
             {

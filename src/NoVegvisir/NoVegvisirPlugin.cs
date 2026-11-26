@@ -37,6 +37,38 @@ namespace NoVegvisir
             }
         }
 
+        public static bool IsHildirVegvisir(Vegvisir veg)
+        {
+            if (veg == null) return false;
+
+            if (!string.IsNullOrEmpty(veg.m_name) && veg.m_name.IndexOf("hildir", System.StringComparison.OrdinalIgnoreCase) >= 0) return true;
+            if (!string.IsNullOrEmpty(veg.m_hoverName) && veg.m_hoverName.IndexOf("hildir", System.StringComparison.OrdinalIgnoreCase) >= 0) return true;
+            if (!string.IsNullOrEmpty(veg.m_useText) && veg.m_useText.IndexOf("hildir", System.StringComparison.OrdinalIgnoreCase) >= 0) return true;
+
+            if (veg.m_locations != null)
+            {
+                for (int i = 0; i < veg.m_locations.Count; i++)
+                {
+                    Vegvisir.VegvisrLocation loc = veg.m_locations[i];
+                    if (loc == null) continue;
+                    if (!string.IsNullOrEmpty(loc.m_locationName) && loc.m_locationName.IndexOf("hildir", System.StringComparison.OrdinalIgnoreCase) >= 0) return true;
+                    if (!string.IsNullOrEmpty(loc.m_pinName) && loc.m_pinName.IndexOf("hildir", System.StringComparison.OrdinalIgnoreCase) >= 0) return true;
+                }
+            }
+
+            Transform cur = veg.transform;
+            while (cur != null)
+            {
+                if (!string.IsNullOrEmpty(cur.name) && cur.name.IndexOf("hildir", System.StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    return true;
+                }
+                cur = cur.parent;
+            }
+
+            return false;
+        }
+
         public static void CleanVegvisir(GameObject go)
         {
             if (go == null || !IsActive)
@@ -49,7 +81,7 @@ namespace NoVegvisir
             for (int i = 0; i < vegvisirs.Length; i++)
             {
                 Vegvisir veg = vegvisirs[i];
-                if (veg == null) continue;
+                if (veg == null || IsHildirVegvisir(veg)) continue;
 
                 if (DestroyEntireStructure != null && DestroyEntireStructure.Value)
                 {
@@ -126,9 +158,9 @@ namespace NoVegvisir
         public static class Vegvisir_Interact_Patch
         {
             [HarmonyPrefix]
-            public static bool Prefix()
+            public static bool Prefix(Vegvisir __instance)
             {
-                if (IsActive)
+                if (IsActive && !IsHildirVegvisir(__instance))
                 {
                     return false;
                 }
@@ -140,9 +172,9 @@ namespace NoVegvisir
         public static class Vegvisir_HoverText_Patch
         {
             [HarmonyPrefix]
-            public static bool Prefix(ref string __result)
+            public static bool Prefix(Vegvisir __instance, ref string __result)
             {
-                if (IsActive)
+                if (IsActive && !IsHildirVegvisir(__instance))
                 {
                     __result = string.Empty;
                     return false;

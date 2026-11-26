@@ -31,6 +31,7 @@ namespace CoarstalsEnemyOverhaul
     public class SE_InjuryBleeding : SE_CombatInjuryBase
     {
         private float m_tickTimer;
+        public bool m_fixedDuration;
 
         public override InjuryType Type
         {
@@ -39,6 +40,7 @@ namespace CoarstalsEnemyOverhaul
 
         public override void Setup(Character character)
         {
+            m_fixedDuration = false;
             m_ttl = Mathf.Max(2f, EnemyOverhaulConfig.BleedingDuration.Value);
             base.Setup(character);
             m_tickTimer = 0.75f;
@@ -51,8 +53,8 @@ namespace CoarstalsEnemyOverhaul
 
             bool exerting = m_character.IsRunning() || m_character.InDodge();
 
-            // Clot faster when calm (not running or dodge-rolling)
-            if (!exerting)
+            // Clot faster when calm (not running or dodge-rolling), unless applied with an exact fixed duration (e.g. 3s Soul Extraction backlash)
+            if (!exerting && !m_fixedDuration)
             {
                 m_time += dt * 0.55f;
             }
@@ -383,6 +385,31 @@ namespace CoarstalsEnemyOverhaul
                 // resetTime: true refreshes duration if hit again by the same injury type
                 seman.AddStatusEffect(se, true, 0, 0f);
             }
+        }
+
+        public static bool ApplyInjuryWithDuration(Player target, InjuryType type, float durationSeconds)
+        {
+            if (target == null || target.IsDead() || type == InjuryType.None) return false;
+            SEMan seman = target.GetSEMan();
+            if (seman == null) return false;
+
+            StatusEffect se;
+            if (s_effects.TryGetValue(type, out se) && se != null)
+            {
+                StatusEffect applied = seman.AddStatusEffect(se, true, 0, 0f);
+                if (applied != null)
+                {
+                    applied.m_ttl = Mathf.Max(0.5f, durationSeconds);
+                    applied.ResetTime();
+                    SE_InjuryBleeding bleed = applied as SE_InjuryBleeding;
+                    if (bleed != null)
+                    {
+                        bleed.m_fixedDuration = true;
+                    }
+                    return true;
+                }
+            }
+            return false;
         }
 
         /// <summary>

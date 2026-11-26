@@ -1579,6 +1579,12 @@ namespace NewDualAxesMod
                 if (mr != null) mr.enabled = false;
             }
 
+            int itemLayer = LayerMask.NameToLayer("item");
+            if (itemLayer >= 0)
+            {
+                prefab.layer = itemLayer;
+            }
+
             if (bestWorldMf != null)
             {
                 MeshRenderer bestWorldMr = bestWorldMf.GetComponent<MeshRenderer>();
@@ -1587,11 +1593,13 @@ namespace NewDualAxesMod
                 float wScale;
                 AlignAndBakeStaffIntoMeshFilter(bestWorldMf, bestWorldMr, prefab.transform, staffMesh, staffMat, targetLengthMeters, false, out wRot, out wOff, out wScale);
                 EnsureTransformChainActiveUpTo(bestWorldMf.transform, prefab.transform);
+                if (itemLayer >= 0) bestWorldMf.gameObject.layer = itemLayer;
             }
             else
             {
                 // Fallback if donor had no world MeshFilter outside attach: create a clean world visual child!
                 GameObject worldGo = new GameObject("CustomStaffWorldVisual");
+                worldGo.layer = prefab.layer;
                 worldGo.transform.SetParent(prefab.transform, false);
                 worldGo.transform.localPosition = Vector3.zero;
                 worldGo.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
@@ -1605,9 +1613,19 @@ namespace NewDualAxesMod
                 wMr.enabled = true;
             }
 
+            // Guarantee an active non-trigger BoxCollider directly on root `prefab` (on layer "item") BEFORE FitWorldDropColliders,
+            // because vanilla StaffFireball/StaffLightning kept its drop collider inside `attach` (which is now disabled on root)!
+            BoxCollider rootDropCol = prefab.GetComponent<BoxCollider>();
+            if (rootDropCol == null)
+            {
+                rootDropCol = prefab.AddComponent<BoxCollider>();
+            }
+            rootDropCol.isTrigger = false;
+            rootDropCol.enabled = true;
+
             NewDualAxesPlugin.FitWorldDropColliders(prefab);
 
-            // 2) Equipped 'attach' group (Hand) — create if missing on donor!
+            // 2) Equipped 'attach' group (Hand) — create if missing on donor, and ALWAYS keep inactive on root world-drop prefab so dropped staves never render doubled!
             if (attach == null)
             {
                 GameObject attachGo = new GameObject("attach");
@@ -1615,12 +1633,12 @@ namespace NewDualAxesMod
                 attachGo.transform.localPosition = Vector3.zero;
                 attachGo.transform.localRotation = Quaternion.identity;
                 attachGo.transform.localScale = Vector3.one;
-                attachGo.SetActive(false);
                 attach = attachGo.transform;
             }
             ReplaceStaffAttachGroup(attach, prefab.transform, staffMesh, staffMat, targetLengthMeters, glowColor, glowYOffset, true, prefab.name);
+            attach.gameObject.SetActive(false);
 
-            // 3) Holstered 'attach_back' group (Back) — create if missing on donor!
+            // 3) Holstered 'attach_back' group (Back) — create if missing on donor, and ALWAYS keep inactive on root world-drop prefab!
             if (attachBack == null)
             {
                 GameObject attachBackGo = new GameObject("attach_back");
@@ -1628,10 +1646,10 @@ namespace NewDualAxesMod
                 attachBackGo.transform.localPosition = Vector3.zero;
                 attachBackGo.transform.localRotation = Quaternion.identity;
                 attachBackGo.transform.localScale = Vector3.one;
-                attachBackGo.SetActive(false);
                 attachBack = attachBackGo.transform;
             }
             ReplaceStaffAttachGroup(attachBack, prefab.transform, staffMesh, staffMat, targetLengthMeters, glowColor, glowYOffset, false, prefab.name);
+            attachBack.gameObject.SetActive(false);
         }
 
         private static void ReplaceStaffAttachGroup(
@@ -1695,6 +1713,13 @@ namespace NewDualAxesMod
             {
                 primaryMr = primaryMf.GetComponent<MeshRenderer>();
                 EnsureTransformChainActiveUpTo(primaryMf.transform, groupRoot);
+            }
+
+            // Ensure ItemStand.GetAttachGameObject(attach) finds an active "attachobj" child even while `attach` itself is inactive on the root ItemDrop!
+            if (isEquippedHand && groupRoot.Find("attachobj") == null && primaryMf != null && primaryMf.transform.parent == groupRoot)
+            {
+                primaryMf.gameObject.name = "attachobj";
+                primaryMf.gameObject.SetActive(true);
             }
 
             // CRITICAL SCALE FIX:

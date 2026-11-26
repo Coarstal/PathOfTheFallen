@@ -20,7 +20,7 @@ namespace FinalMod
     {
         public const string PluginGUID = "com.coarstal.pathofthefallen";
         public const string PluginName = "Valheim - Path of the Fallen";
-        public const string PluginVersion = "1.0.6";
+        public const string PluginVersion = "1.0.7";
 
         internal static ManualLogSource ModLogger;
         private Harmony m_harmony;
@@ -80,6 +80,14 @@ namespace FinalMod
             }
 
             Logger.LogInfo(string.Format("{0} v{1} loaded successfully!", PluginName, PluginVersion));
+        }
+
+        private void Update()
+        {
+            if (WeaponAttributesPlugin.IsActive)
+            {
+                SoulExtractionUI.UpdateTick();
+            }
         }
 
         private void OnDestroy()

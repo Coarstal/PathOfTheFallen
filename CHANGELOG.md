@@ -4,6 +4,51 @@ All notable changes to **Path of the Fallen** (`com.coarstal.pathofthefallen`) f
 
 ---
 
+## [1.0.7] — 2026-11-26
+
+### English
+- **Soul Extraction Crystal (`SoulCrystalEmpty` — *Empty Soul Crystal*):**
+  - Sold exclusively by **Hildir** for **`999` Coins** (`SoulCrystalTraderPrice = 999`), giving late-game and Champion-farmed Coins a permanent progression sink.
+  - Custom 3D world-drop mesh and `128x128` inventory icon.
+  - **Right-Click Soul Extraction Window (`SoulExtractionUI`):** Right-clicking an *Empty Soul Crystal* in your inventory opens a dedicated Valheim Woodpanel UI listing all enchanted weapons currently in your inventory with their quality/enchant badge, enchantment stats, and output preview (`-> Soul of Eikthyr I..V`).
+  - **Weapon Durability Breakage & `3s` Elemental Backlash:** Extracting a soul strips the Boss Soul enchantment from the weapon, **breaks the weapon down to `0` durability** (repairable for free at a Forge/Workbench), inflicts a **`3s` debuff matching the Boss Soul's damage type** (*Lightning*, *Bleeding*, *Poison*, *Frost*, *Burning*, *Poison + Lightning*, or *Burning + Spirit*), consumes `1x` *Empty Soul Crystal*, and seals the soul inside a *Filled Soul Crystal*.
+- **Filled Soul Crystals (`SoulCrystalFilled` — *Soul of <Boss> I..V*):**
+  - Custom glowing 3D crystal mesh, `128x128` icon, and colored Roman numeral badge (`I..V`) in the inventory slot corner.
+  - Dynamically titled and colored per Boss Soul and Tier (`I–V`), with exact trophy yield preview in its tooltip.
+- **New Crafting Station — Soul Extraction Cauldron (`piece_soul_cauldron`):**
+  - Built with the Hammer (*Crafting* tab, near Workbench): **`Tin x10`**, **`Copper x5`**, **`SurtlingCore x3`**, **`BoneFragments x10`**.
+  - Custom 3D runic iron cauldron over a stone hearth with horned Norse skulls, swirling purple-cyan soul brew, balanced HDR glow, and a **self-stirring enchanted ladle** that continuously orbits & tilts in the brew.
+  - **Progression-Gated Gray Soul Preview & Shattering:** Owned Soul Crystals appear at the top in full boss color, while unowned Soul Crystals (`I..V`) for defeated/unlocked bosses appear below in **muted grayscale** so you can inspect yields at any time:
+    - **Guaranteed `50%` return of total invested mob trophies** (`SoulCauldronMobReturnPercent = 50%`: **`1 / 3 / 8 / 16 / 26`** mob trophies returned across Tiers `I..V`).
+    - **`25%` chance to recover `1x` Boss Trophy** (`SoulCauldronBossReturnChance = 25%`).
+- **Fixes & Polish:**
+  - Fixed *Staff of Whispering Wind* (`StaffMeadows`) workbench upgrade filter intercepting Enchanting Table rows and mislabeling adjacent weapons.
+  - Aligned *Moder's Crystal Altar* (`piece_enchant_ext_moder`) and *Yagluth's Eternal Flame* (`piece_enchant_ext_yagluth`) 3D meshes to exact `90°` axes and disabled `m_randomInitBuildRotation` on custom pieces.
+  - Fixed all 5 custom Magic Staves rendering a duplicate overlapping mesh (`attach`) when dropped on the ground.
+  - Exempted **Hildir's quest map table** from `NoVegvisir` so interacting with Hildir's map pins her 3 quest dungeons normally.
+
+### Русский
+- **Пустой кристалл душ (`SoulCrystalEmpty`):**
+  - Продаётся эксклюзивно у **Хильдир** за **`999` монет** (`SoulCrystalTraderPrice = 999`), превращая монеты с Чемпионов в ценную валюту на всю игру.
+  - Собственная 3D-модель предмета в мире и иконка `128x128`.
+  - **Меню извлечения души по ПКМ (`SoulExtractionUI`):** нажатие ПКМ по *Пустому кристаллу душ* открывает окно со списком всех зачарованных пушек в инвентаре, их бонусами и предпросмотром результата (`-> Душа Эйктюра I..V`).
+  - **Поломка оружия в `0` прочности и `3-секундный` дебафф стихии:** при извлечении чары снимаются с оружия, **само оружие ломается в `0` прочности** (остаётся в инвентаре и бесплатно чинится на кузнице/верстаке), на игрока на **`3 секунды` накладывается дебафф соответствующего типа урона** (*Молния*, *Рваная рана*, *Яд*, *Мороз*, *Горение*, *Яд + Молния* или *Горение + Дух*), тратится `1` пустой кристалл и выдаётся кристалл с душой.
+- **Запечатанные кристаллы душ (`SoulCrystalFilled` — *Душа <Босса> I..V*):**
+  - Собственная светящаяся 3D-модель, иконка `128x128`, цветная римская цифра уровня (`I..V`) в слоте инвентаря и динамическое название в цвет босса (*Душа Эйктюра I..V* .. *Душа Прородителя I..V*).
+- **Новая станция — «Котёл для извлечения Душ» (`piece_soul_cauldron`):**
+  - Строится молотком (вкладка *«Ремесло»*, рядом с верстаком): **`Олово x10`**, **`Медь x5`**, **`Ядро суртлинга x3`**, **`Обломки костей x10`**.
+  - Кастомная 3D-модель рунического котла со смягчённым свечением и **зачарованной поварёшкой, которая сама помешивает варево по кругу**.
+  - **Предпросмотр душ серым цветом и разбивание кристаллов:** имеющиеся в кармане кристаллы отображаются сверху в цвете босса, а отсутствующие души (`I..V`) открытых в мире боссов подсвечиваются **серым цветом**, как на Столе зачарования:
+    - **Гарантированный возврат `50%` вложенных трофеев мобов** (`1 / 3 / 8 / 16 / 26` шт. за уровни `I..V`).
+    - **`25%` шанс вернуть `1x` трофей самого босса**.
+- **Исправления:**
+  - Исправлен баг на Столе зачарования, из-за которого фильтр верстака для *Посоха Шепчущего Ветра* (`StaffMeadows`) сдвигал подписи соседнего оружия (например, Бронзовой алебарды).
+  - Выровнены строго под **`90°`** 3D-модели *Кристального алтаря Моудер* (`piece_enchant_ext_moder`) и *Вечного пламени Яглута* (`piece_enchant_ext_yagluth`), а также отключён случайный стартовый поворот при постройке молотком.
+  - Исправлено раздвоение 3D-модели у всех 5 новых посохов при выбрасывании на землю.
+  - Исправлена неработающая **карта квестов на столе у Хильдир** (добавлено исключение в модуль `NoVegvisir`).
+
+---
+
 ## [1.0.6] — 2026-11-25
 
 ### English

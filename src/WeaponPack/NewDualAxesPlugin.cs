@@ -2809,6 +2809,14 @@ namespace NewDualAxesMod
                 return true;
             }
 
+            // Never block Enchanting Table or Soul Cauldron custom recipes!
+            if (recipe.name != null &&
+                (recipe.name.StartsWith("Recipe_Enchant_", StringComparison.Ordinal) ||
+                 recipe.name.StartsWith("Recipe_SoulCauldron_", StringComparison.Ordinal)))
+            {
+                return true;
+            }
+
             if (recipe.m_item.m_itemData.m_shared.m_name == "$item_staff_meadows")
             {
                 CraftingStation station = (player != null) ? player.GetCurrentCraftingStation() : null;
